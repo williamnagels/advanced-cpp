@@ -1,8 +1,15 @@
 # Advanced C++ Training
 
-The training is organized into five main topics, the topics evolve from functional building blocks (ranges and coroutines) to larger architectural tools (modules and static analysis). The training assumes you have prior experience with containers, move semantics and basic metaprogramming.
-A detailed list of prerequisite knowledge is provided at the bottom of this document.
-If any of those topics listed at the bottom are unfamiliar to you, I strongly recommend reviewing them in advance to get the most out of the course.
+The training is organized into five main topics:
+ - Ranges
+ - Coroutines
+ - Concepts
+ - Various
+ - Tooling
+ 
+The training assumes you have prior experience with containers, move semantics and basic metaprogramming.
+A list of required knowledge is provided at the bottom of this document.
+If any of those topics listed at the bottom are unfamiliar to you, I recommend reviewing them in advance to get the most out of the course.
 
 ---
 
@@ -18,12 +25,12 @@ Ranges offer composability, lazy evaluation, and cleaner syntax. Compared to raw
 - Composing pipelines
 - Customizing views
 
-## 2. Coroutines and Lazy Computation
+## 2. Coroutines
 
 **Why?**
-Coroutines allow you to write sequential-looking code that can be executed lazily or asynchronously behind the scenes.
-This leads to more natural control flow and greatly simplifies asynchronous programming.
-By using coroutines, you can eliminate deeply nested callbacks, also known as the dreaded “callback hell”, and write cleaner, more maintainable code.
+Coroutines allow you to write sequential-looking code that can be executed asynchronously behind the scenes.
+This leads to more natural control flow and simplifies asynchronous programming.
+By using coroutines, you can avoid nested callbacks, also known as the dreaded “callback hell”.
 
 **What?**
 - co_yield, co_return, co_await
@@ -31,10 +38,10 @@ By using coroutines, you can eliminate deeply nested callbacks, also known as th
 - Coroutine lifetimes and pitfalls
 - Integration with ranges and event loops
 
-## 3. Modules and Build Optimization
+## 3. Modules
 
 **Why?**
-Modules introduce a modern, scalable way to organize and **?TODO: william something here** in large C++ projects.
+Modules introduce a modern way to organize code in large C++ projects.
 You will find out how modules, ranges, and concepts are designed to work together and see the bigger modern c++ picture.
 
 **What?**
@@ -43,10 +50,10 @@ You will find out how modules, ranges, and concepts are designed to work togethe
 - Module partitions and interface units
 - Working with legacy headers
 
-## 4. A Collection of various C++ Features
+## 4. Various
 
 **Why?**
-“quality-of-life” features every modern C++ developer should be using.
+“quality-of-life” features every C++ developer should be using.
 
 **What?**
 - Spaceship operator
