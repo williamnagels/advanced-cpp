@@ -3,7 +3,7 @@
 The training is organized into five main topics:
  - Ranges
  - Coroutines
- - Concepts
+ - Modules
  - Various
  - Tooling
  
