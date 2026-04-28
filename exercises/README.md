@@ -57,7 +57,7 @@ mkdir $ROOT_CPPTRAINING/build
 docker run --rm -v $ROOT_CPPTRAINING/exercises:/source -v $ROOT_CPPTRAINING/build:/build cpptraining /bin/sh -c "cmake -B /build -S /source ; cmake --build /build"
 ```
 ## Solving the exercises
-1. Navigate to the folder of the module you're interested in (e.g., containers). Open the corresponding exercise file, such as containers/ex1.cpp, to start with the first exercise.
-2. Look for the symbol test_1 within that file and read the associated documentation. The instructions should clarify what needs to be done. Each test file (e.g. containers/ex1.cpp) will typically contain several local symbols like test_1, test_2, etc., and one global symbol, such as cont_ex1. This global symbol is called by the test binary. You can see the global symbols needed to build each binary in the main.cpp file in each submodule.
+1. Navigate to the folder of the module you're interested in (e.g., ranges). Open the corresponding exercise file, such as ranges/ex1.cpp, to start with the first exercise.
+2. Look for the symbol test_1 within that file and read the associated documentation. The instructions should clarify what needs to be done. Each test file (e.g. ranges/ex1.cpp) will typically contain several local symbols like test_1, test_2, etc., and one global symbol, such as cont_ex1. This global symbol is called by the test binary. You can see the global symbols needed to build each binary in the main.cpp file in each submodule.
 3. After making changes to the source files, compile the project.
 4. Run the binary that contains the excercise you were making to test if your changes are correct.
