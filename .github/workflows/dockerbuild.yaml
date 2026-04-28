@@ -27,14 +27,14 @@ jobs:
         run: |
           docker build -t trainingcontainer docker/
 
-      # Step 4: Build CMake Project in exercises/extra/compilertest
-      # - name: Build CMake Project - compilertest
-      #   run: |
-      #     docker run --rm \
-      #       -v ${{ github.workspace }}:/workspace \
-      #       trainingcontainer /bin/sh -c  "cd /workspace/exercises/extra/compilertest && mkdir -p build && cd build && cmake .. && make"
+      # Step 4: Build CMake Project in compilertest
+      - name: Build CMake Project - compilertest
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            trainingcontainer /bin/sh -c  "cd /workspace/compilertest && mkdir -p build && cd build && cmake .. && make"
 
-      # Step 4: Build CMake Project in exercises/
+      # Step 5: Build CMake Project in exercises/
       - name: Build CMake Project - exercises
         run: |
           docker run --rm \

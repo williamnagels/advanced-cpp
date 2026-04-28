@@ -5,7 +5,7 @@ This CMake project verifies if your build environment is capable of building all
 If your current compiler doesn't meet these requirements, or if you're using an older version of CMake/Clang/GCC and don't want to modify your system, there’s an Alpine-based Docker container provided
 that includes the correct GCC version and CMake in docker/. The container is also a handy solution if you're using Windows or need a clean, isolated environment for building.
 If you use the container, its best to volume mount the compilertest sources using the -v start-up parameter.
-The example below assumes that **<TRAINING_ROOT>** is replaced with an actual path on your system. It should be replaced with the path to the advnaced-cpp training root folder.
+The example below assumes that **<TRAINING_ROOT>** is replaced with an actual path on your system. It should be replaced with the path to the advanced-cpp training root folder.
 - Build the container
 ```
 docker build -t cpptraining <TRAINING_ROOT>/docker
