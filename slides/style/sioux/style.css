@@ -1,0 +1,58 @@
+/* @theme slide-theme */
+
+@import 'default';
+
+h1 
+{
+  color: #F15D03;
+}
+h2 
+{
+  color: #F15D03;
+}
+/* First slide background */
+section.first-slide
+{
+  background-image: url('style/sioux/front16x9.jpg');
+  background-size: cover;
+  background-position: center;
+}
+section
+{
+  background-image: url('style/sioux/background16x9.jpg');
+  background-size: cover;
+  background-position: center;
+}
+
+section.second-slide
+{
+  background-image: url('style/sioux/title16x9.jpg');
+  background-size: cover;
+  background-position: center;
+}
+section.final-slide
+{
+  background-image: url('style/sioux/final16x9.jpg');
+  background-size: cover;
+  background-position: center;
+}
+section.second-slide h1
+{
+  position: absolute;
+  top: 4%;
+  left: 5%;
+  font-size: 2.35em;
+  font-family: "Arial", sans-serif;
+  font-weight: bold;
+  color: #000000;
+}
+section.second-slide h2
+{
+  position: absolute;
+  top: 13%;
+  left: 5%;
+  font-size: 1.5em;
+  font-family: "Arial", sans-serif;
+  color: #000000;
+}
+
