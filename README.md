@@ -1,5 +1,5 @@
 # Advanced C++ Training
-
+![Build Status](https://github.com/williamnagels/advanced-cpp/actions/workflows/dockerbuild.yaml/badge.svg)
 ## Slides
 All slides are located in the slides/ subfolder.
 

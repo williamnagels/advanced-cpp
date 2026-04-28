@@ -2,7 +2,7 @@
 
 ## Build status
 
-![Build Status](https://github.com/williamnagels/advanced-cpp/actions/workflows/build-in-docker.yaml/badge.svg)
+![Build Status](https://github.com/williamnagels/advanced-cpp/actions/workflows/dockerbuild.yaml/badge.svg)
 
 The GitHub workflow* builds the Docker container located in docker/. It then uses the containerized compiler to build both the CMake project in the exercises folder (this folder) and the compilertest project within the extra/compilertest directory.
 
