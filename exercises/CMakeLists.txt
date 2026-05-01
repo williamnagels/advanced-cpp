@@ -26,7 +26,12 @@ target_compile_options(ranges PRIVATE -Wall -Wextra -Wpedantic)
 
 set(COROUTINES_SOURCES 
 	coroutines/main.cpp 
-	coroutines/ex1.cpp)
+	coroutines/ex1.cpp
+	coroutines/ex2.cpp
+	coroutines/ex3.cpp
+	coroutines/ex4.cpp
+	coroutines/ex5.cpp)
+	
 add_executable(coroutines ${COROUTINES_SOURCES})
 target_compile_options(coroutines PRIVATE -Wall -Wextra -Wpedantic)
 

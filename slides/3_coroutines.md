@@ -273,7 +273,7 @@ Yes — one of them.
 return_void() → void coroutine result
 return_value(T) → T result
 
-Why customize?
+**Why customize?**
 final output
 completion signaling
 error states
@@ -295,7 +295,72 @@ They solve different problems:
 - Decide whether to suspend before destruction: final_suspend
 logical completion vs lifecycle control
 ---
-C++23 introduced added a similar generator to the library
+## resume(): Teleporting between domains
+resume(): execute a transition between two different domains:
+- Stackful Domain: The caller's thread stack where standard function calls live.
+- Stackless Domain: The coroutine's heap-allocated state machine.
+```cpp
+Iterator begin() {
+    handle.resume();
+    return Iterator{handle, handle.done()};
+}
+```
+--- 
+## Stackless
+- The coroutine has no stack of its own.
+- Reuses the caller's stack for temporary calculations 
+- Persists into  coroutine Frame.
+---
+## resume() mental model
+- Standard function call
+- Pushes a return address to the Caller's Stack
+- Does a jmp to IP stored in coro frame
+```
+// Pseudo-ASM for Caller
+push rip + 5  ; Save return address
+jmp handle.resume 
+; resume() does:
+jmp [coro_frame->resume_ptr]
+```
+---
+## co_yield, co_await, co_return mental model
+On suspension of the coroutine:
+- Update resume_ptr
+- Invoke 'ret'
+- Ret grabs rip+5 from stack and puts IP there.
+- Since coros are stackless cannot grab wrong IP.
+```
+// Coroutine logic
+do_work();
+f->resume_ptr = <current_ip>; // Save IP, 
+ret; // <--- The Critical Jump 
+```
+---
+## Stackless
+- Cannot yield from a nested function call within a coroutine.
+- If foo() tried to "yield," --> need to store entire call stack.
+- Stackful coroutines (e.g. boost fibers)
+```cpp
+task coro() {
+    nested_func(); // Pushes to stack
+}
+void nested_func() {
+    co_yield 1; // ERROR!
+    // No frame to store IP
+    // inside this function.
+}
+```
+---
+## The metal model
+You must understand this or things will be confusing
+Resuming is a jump, Suspending is a return
+- resume() is called like a normal function. The Return Address (RA) is pushed to the stack.
+- The coroutine "resumes" by jumping to its state machine logic via a pointer in the heap.
+- The coroutine executes on the caller's stack.f
+- On suspension, it saves its logical IP to the heap and executes ret.
+- Control flows back to the caller using the RA that was pushed in step 1.
+---
+C++23 introduced added a std::generator to jump between the stackful and stackless domains
 ```cpp
 #include <generator>
 #include <iostream>
@@ -483,6 +548,9 @@ struct iter {
 };
 ```
 ---
+Create an iterator producer and consume
+using std::range
+
 coroutines/ex1.cpp
 
 ---
@@ -695,8 +763,12 @@ SimpleTask other_coroutine() {
 }
 ```
 ---
+Simple:
 coroutines/ex2.cpp
-
+coroutines/ex3.cpp
+Advanced:
+Implement any
+coroutines/ex4.cpp
 ---
 ## Timer
 ```cpp
@@ -797,10 +869,6 @@ private:
 };
 ```
 ---
-ex4.cpp
-
----
-
 # cppcoro
 
 Many coroutine frameworks exist that implement:
@@ -881,5 +949,7 @@ struct executor_awaitable {
 [23:02:36] [thread 126461306463808] Task 1 done
 [23:02:36] [thread 126461318256512] All tasks finished
 ```
+---
+ex5.cpp
 ---
 <!-- _class: final-slide -->
