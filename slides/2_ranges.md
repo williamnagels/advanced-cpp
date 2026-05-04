@@ -8,13 +8,13 @@ theme: slide-theme
 <!-- _class: second-slide -->
 ---
 # Ranges
-- problems with iterators
-- range
+- Why do we need ranges?
+- What is a range really?
 - views and adaptors
-- sentinels
-- P3411R0
+- Sentinels
 ---
-## Fundamentally unsafe
+# Why do we need ranges?
+## Iterators are fundamentally unsafe
 There are no built-in safety checks or sentinels to prevent their use after invalidation
 ```cpp
 std::vector<int> v{1, 2, 3};
@@ -23,8 +23,8 @@ v.push_back(4);   // may reallocate, invalidates iterators
 int x = *it;      // undefined behaviour
 ```
 ---
-## Sentinels
-Before ranges, iterators always came in pairs of the same type — begin and end.
+## Iterators and sentinels
+Iterators always come in pairs of the same type: begin and end.
 This makes some patterns awkward (e.g., searching until a terminator).
 ```cpp
 // Can't stop at '\0' without computing std::end(...)
@@ -32,6 +32,8 @@ for (auto it = std::begin(arr); it != std::end(arr); ++it) {
     ...
 }
 ```
+We need to iterate until end but the stop condition is until we find the terminator.
+
 ---
 ## Composability
 Iterators don’t compose well.
@@ -46,10 +48,20 @@ for (auto it = v.begin(); it != v.end(); ++it) {
 }
 ```
 ---
-## Errors
 
-If find fails, you must manually compare with end().
-Forgetting this = bugs.
+Standard STL algorithms are **eager**. They process the entire range immediately, producing a full result before the next step begins.
+
+- Large-scale datasets that don't fit in RAM.
+- Real-time data streams where you don't know the end.
+    - Custom iterators
+
+---
+## How to handle failure?
+
+If std::find fails to find anything, you must manually compare with end().
+
+- Dereferencing the end() iterator is UB.
+- Compiler does not help you here.
 
 Example
 ```cpp
@@ -61,18 +73,19 @@ int x = *it;   // BUG if element not found
 Different containers have different invalidation rules.
 | Container     | push_back invalidates? |
 | ------------- | ---------------------- |
-| `std::vector` | Yes (on reallocation)  |
+| `std::vector` | Possibly               |
 | `std::list`   | Never                  |
+
 ---
 
 ex1.cpp:
-Convert a raw for loop to an STL algorithm
-rediscover the pain of using iterators.
+Convert a raw for loop to an STL algorithm.
+(re)discover the pain of using iterators.
 
 ---
-# What is a range
-
-a range is any object that can produce a begin and an end.
+# Ranges
+## What is a range?
+A range is any object that can produce a begin and an end.
 ```cpp
 template< class T >
 concept range = requires( T& t ) {
@@ -81,15 +94,19 @@ concept range = requires( T& t ) {
 };
 ```
 ---
+## Goal?
 - Make iteration explicit and unified
 - Improve safety and clarity
 - Reduce manual iterator handling
 - Allow algorithms to work directly on containers
+- Lazy access to the underlying container
 ```cpp
 std::sort(v.begin(), v.end());
 std::sort(v);
 ```
 ---
+## Templates
+Most of the intelligent things happen at compile time.
 ```cpp
 template< ranges::random_access_range R, class Comp = ranges::less,
           class Proj = std::identity >
@@ -97,9 +114,15 @@ requires std::sortable<ranges::iterator_t<R>, Comp, Proj>
 constexpr ranges::borrowed_iterator_t<R>
     sort( R&& r, Comp comp = {}, Proj proj = {} );
 ```
+We already know this concept more or less:
+```cpp
+ranges::random_access_range R
+```
+
 ---
-## Projection
+## Projection: Identity
 Remove boilerplate using projection
+Increase expressiveness
 ```cpp
 struct Lad {
     std::string name;
@@ -113,11 +136,13 @@ int main() {
 }-
 ```
 ---
-- pass through the projection first then the comparator.
+## Projection
+- Transformed by projection then the comparator evaluation.
 - Invokable: Projections can be member pointers, function pointers, or lambdas.
 - Performance: Projections are called twice per comparison (once for each side).
 ---
-## sentinel
+## Ranges: sentinel
+Overload operator== for the sentinel
 ```cpp
 bool operator==(const char* it, semicolon_sentinel)
 {
@@ -131,11 +156,11 @@ auto r = std::ranges::subrange(
 );
 ```
 ---
-## views
-
-A View is a range that is
-- Cheap to copy
-- Probably does not own its elements
+## View
+A view is a type that is:
+- Definitly a range
+- Cheap to move
+- Possibly owns the container
 ```cpp
 template<class T>
 concept view = ranges::range<T> && std::movable<T> && ranges::enable_view<T>;
@@ -148,6 +173,7 @@ auto get_first_three_view(std::vector<int>& v) {
 The concept of views was invented for composability:
 - range → transform → filter → slice → consume
 - Do not want to copy underlying data when passing into the next algorithm
+- The view is copied, not the underlying container
 ---
 ```cpp
 std::vector<int> v{1, 2, 3, 4, 5, 6};
@@ -160,7 +186,8 @@ for (int x : r3)
 ```
 ---
 ## Pipeline syntax
-temporary views are created behind the screen
+- Use pipe '|' symbol
+- Temporary views are created that do not outlive the expression
 ```cpp
 std::vector<int> v{1, 2, 3, 4, 5, 6};
 
@@ -174,7 +201,8 @@ for (int x : r)
 ```
 ---
 # Adaptors
-A factory object
+- Adaptors are factories for view.
+- The filter adapter generates the filter view.
 
 Examples:
 - std::views::filter
@@ -182,13 +210,12 @@ Examples:
 - std::views::take
 
 ---
+## Ranges are complicated types
 What is the real type?
-this compiles:
 ```cpp
 #include <ranges>
 #include <vector>
 #include <iostream>
-
 int main()
 {
     std::vector<int> v = {1,2,3,4};
@@ -256,7 +283,7 @@ ex2.cpp
 
 ---
 ## Custom views and adaptors
-Create a moving average algorithm. given a range of numbers A. produce a new range B with the moving average of the numbers in A.
+Create a moving average algorithm. Given a range of numbers A. Produce a new range B with the moving average of the numbers in A.
 need some kind of stateful iterator, not provided by std
 ```cpp
 int main() {
@@ -266,7 +293,9 @@ int main() {
 }
 ```
 ---
-concept used to constrain templated parameter r
+Define a struct 'moving_average'
+Concept used to constrain templated parameter r
+This is the adaptor, the view factory.
 ```cpp
 struct moving_average {
     std::size_t window_;
@@ -379,7 +408,7 @@ Runtime UB error intercepted by the compiler:
 Compiler returned: 1
 ```
 ---
-Why does find return dangling while views::all returns an owning_view?
+Why does std::find return dangling while views::all returns an owning_view?
 - Algorithms return iterators. They cannot own the container.
 - Views are objects. When given an Rvalue, they move the data into an owning_view.
 ```cpp
@@ -389,6 +418,7 @@ auto v = get_data() | std::views::filter(is_even);
 auto it = std::ranges::find(get_data(), 2);
 ```
 ---
+## Borrowed ranges
 Observation: Not all r-value ranges are unsafe
 If the range dies, the iterators remain valid
 ```cpp
