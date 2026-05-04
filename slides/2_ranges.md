@@ -201,7 +201,7 @@ for (int x : r)
 ```
 ---
 # Adaptors
-- Adaptors are factories for view.
+- Adaptors are factories for views.
 - The filter adapter generates the filter view.
 
 Examples:
@@ -216,18 +216,32 @@ What is the real type?
 #include <ranges>
 #include <vector>
 #include <iostream>
+std::string demangle(const char* name);
 int main()
 {
     std::vector<int> v = {1,2,3,4};
 
     auto is_even = [](int x){ return x % 2 == 0; };
     std::ranges::filter_view fv(v, is_even);
-
-    for (int x : fv) {
-        std::cout << x << "\n";
-    }
+    std::cout << demangle(typeid(fv).name()) << std::endl;
 }
 ```
+---
+```cpp
+std::string demangle(const char* name)
+{
+    int status = 0;
+    std::unique_ptr<char, void(*)(void*)> res{
+        abi::__cxa_demangle(name, nullptr, nullptr, &status),
+        std::free
+    };
+    return (status == 0) ? res.get() : name;
+}
+```
+```cpp
+std::ranges::filter_view<std::ranges::ref_view<std::vector<int, std::allocator<int> > >, main::{lambda(int)#1}>
+```
+- Filter predicate is part of the type? Good --> EBO
 ---
 Only possible because of Class Template Argument Deduction (CTAD, C++17) .
 
