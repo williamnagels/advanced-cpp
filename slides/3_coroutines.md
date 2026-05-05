@@ -360,7 +360,40 @@ Resuming is a jump, Suspending is a return
 - On suspension, it saves its logical IP to the heap and executes ret.
 - Control flows back to the caller using the RA that was pushed in step 1.
 ---
-C++23 introduced added a std::generator to jump between the stackful and stackless domains
+```cpp
+template typename<T>
+struct  GCC_INTERNAL::CoroutineFrame  {
+    Generator<T>::promise_type promise; //This is our user defined objects that provide callbacks
+    int state = 0; // The "Program Counter" (PC)
+    int local_val; // In heap.
+    void resume() {
+        switch (this->state) {
+            case 0: goto ENTRY;
+            case 1: goto AFTER_YIELD;
+            case 2: goto FINAL;
+        }
+    ENTRY:
+        if (!promise.initial_suspend().await_ready()) {
+            this->state = 1; 
+            return; // JUMP BACK TO CALLER (Save PC=1)
+        }
+    AFTER_YIELD:
+        this->local_val = 100; // Update heap variable      
+        auto awaiter = promise.yield_value(this->local_val); // user callback
+        if (!awaiter.await_ready()) {
+            this->state = 2; // Save PC for next time
+            return; // JUMP BACK TO CALLER (Save PC=2)
+        }
+    AFTER_RESUME_2:
+        promise.return_void();  // user callback
+        goto FINAL;
+    FINAL:
+        promise.final_suspend(); // user callback
+    }
+};
+```
+---
+## C++23 std::generator
 ```cpp
 #include <generator>
 #include <iostream>
@@ -581,12 +614,12 @@ During suspension:
 
 | Type                  | Purpose                                     |
 | --------------------- | --------------------------------------------|
-| Awaiting coroutine    | Type a **coroutine** can co_await on       |
+| Awaiting coroutine    |This is the coroutine function that contains the co_await statement and will be (possibly) be suspended.       |
 | Awaiter               | Object that implements the await protocol   |
-| Awaitable             | expression after co_await                   |
+| Awaitable             | expression after co_await. The "thing" you are awaiting (e.g., a timer, a socket, or another task).                   |
 
 ---
-The awaitable
+## The awaitable
 has a member operator co_await()
 ```cpp
 struct MyTask {
@@ -601,15 +634,15 @@ or it already implements the Awaiter API directly
 
 ---
 
-An **awaiter** must provide three functions:
+## The awaiter
 ```cpp
 struct Awaiter {
-   bool await_ready();         // run now or suspend?
-   void await_suspend(h);      // called when suspending
-   T await_resume();           // value returned to caller
+   bool await_ready();         // result ready or not?
+   void await_suspend(h);      // called when suspending h
+   T await_resume();           // value returned to awaiting
 };
 ```
-Where h is a coroutine handle of the awaiting coroutine
+Where h is a coroutine handle of the awaiting
 
 ---
 ## Awaiter protocol
@@ -766,9 +799,10 @@ SimpleTask other_coroutine() {
 Simple:
 coroutines/ex2.cpp
 coroutines/ex3.cpp
+
 Advanced:
-Implement any
 coroutines/ex4.cpp
+
 ---
 ## Timer
 ```cpp
