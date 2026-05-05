@@ -290,6 +290,18 @@ export struct Point
 export Point doWork(Point const& p){}
 ```
 ---
+Do not need to know the correct header file.
+Need to know the correct component name.
+```cpp
+import lib;
+int main() {
+    Point p{10, 20};     // Uses the exported struct
+    doWork(p);           // Uses the exported function   
+    return 0;
+}
+```
+
+---
 Every module consists of one or more Module Units (MU)
 - Special kind of TU
 - Not exposed outside of the module
@@ -309,7 +321,7 @@ module myModule
 int foo() { return 69;}
 ```
 ---
-A module unit be broken down into partitions
+A module unit can be broken down into partitions
 ```cpp
 //geometry.ccpm
 export module geometry;
@@ -329,9 +341,9 @@ What it really looks like
 Externally visible as a 'module'
 ```
 lib.ccpm ----------> main.cpp ---> main.o----------> main
-| lib_part.ccpm  |                            |
-|  |             |                            |
-----> lib.pcm-------> lib.o -------------------
+| lib_part.ccpm                               |
+| |                                           |
+--------------------> lib.o -------------------
 ```
 ---
 Types of module units
@@ -401,7 +413,7 @@ void bar(){helper();}
 Primary module interface unit only
 
 ---
-Global module fragment
+## Global module fragment
 ```cpp
 export module myModule;
 #include <vector>
@@ -590,13 +602,17 @@ private:
 #include "Private.h"
 
 struct UserFacingImpl
-{ int number = Private :secret(); };
+{ 
+    int number = Private :secret(); 
+};
 
 UserFacing :UserFacing()
 : m_pimpl(new UserFacingImpl()) {}
 
 int UserFacing :getNumber() const
-{ return m_pimpl->number; }
+{ 
+    return m_pimpl->number; 
+}
 ```
 Pimpl, trying to hide private information
 from header file into cpp file.
@@ -608,30 +624,28 @@ module;
 #define SECRET 42 //dont leak define
 export module Private;
 namespace Private {
-export inline int secret() { return SECRET; }
+    export inline int secret() { return SECRET; }
 }
 ```
 ---
 ```cpp
 export module UserFacing;
 import Private; //dont re-export
-struct UserFacingImpl
-{ const int number = Private :secret(); };
+struct UserFacingImpl { 
+    const int number = Private :secret(); 
+};
 export class UserFacing
 {
 public:
 UserFacing() : m_pimpl(std :make_shared<UserFacingImpl>()) {}
-int getNumber() const
-{
+int getNumber() const {
     return m_pimpl->number;
 }
 private:
     std :shared_ptr<UserFacingImpl> m_pimpl;
 };
 ```
----
-ex1.cpp
-ex2.cpp
+
 ---
 ## Compile-time performance
 One of the selling points
@@ -688,6 +702,7 @@ RIP makefiles
 CMake 3.30 for header module files.
 
 ---
+
 ```
 [1/10] Scanning lib.cppm for CXX dependencies
 [2/10] Scanning main.cpp for CXX dependencies
@@ -700,6 +715,10 @@ CMake 3.30 for header module files.
 [9/10] Linking CXX static library libLib.a
 [10/10] Linking CXX executable Main
 ```
+---
+ex1.cpp
+ex2.cpp
+
 ---
 ## Templates
 ```cpp
@@ -812,5 +831,6 @@ That doesn’t have to be forever:
 - Cross-compiler compatibility could appear
 ---
 ex3.cpp
+
 ---
 <!-- _class: final-slide -->
