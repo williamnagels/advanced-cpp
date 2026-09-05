@@ -53,6 +53,7 @@ In this example, value represents the specific sub-project or target you wish to
 ## Docker container
 You can use all native build commands, but they should be executed inside the Docker container. The following command will create a build folder in $ROOT_CPPTRAINING. This folder will be volume-mounted to the Docker container, with the native build directory mapped to /build within the container, which serves as the build destination for CMake.
 ```
+docker build $ROOT_CPPTRAINING/docker -t cpptraining
 mkdir $ROOT_CPPTRAINING/build
 docker run --rm -v $ROOT_CPPTRAINING/exercises:/source -v $ROOT_CPPTRAINING/build:/build cpptraining /bin/sh -c "cmake -B /build -S /source ; cmake --build /build"
 ```
