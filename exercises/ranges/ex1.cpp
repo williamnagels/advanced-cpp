@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <numeric>
 #include <cassert>
+#include <iterator>
 namespace
 {
 struct Order {
@@ -16,10 +17,9 @@ GOAL:
 The goal of this exercise is to transition from manual "Do-It-All" loops to 
 composable standard algorithms.
 
-1. Filter the 'orders' vector: Copy only orders where the status is "Completed" 
-   into the 'completedOrders' vector.
-2. Calculate the Sum: Use a numeric algorithm to sum (also called accumulate) the 'totalPrice' field 
-   of all orders now residing in 'completedOrders'.
+1. Use std::copy_if and std::back_inserter to copy only completed orders into
+    completedOrders.
+2. Use std::accumulate to sum totalPrice in the intermediate container.
 
 Note how the STL requires you to manage a temporary container to hold 
 intermediate results.
@@ -40,10 +40,18 @@ void test_1()
         }
     } 
     assert(rawSum == 360.0);
+    std::vector<Order> completedOrders;
+
+    // TODO: Copy completed orders with std::copy_if.
+
     double stlSum = 0.0;
+    // TODO: Calculate stlSum with std::accumulate and a binary lambda.
     
-    //Uncomment assert once exersise has been completed
-    //assert(stlSum == 360.0);
+    // Uncomment once the exercise has been implemented.
+    // assert(completedOrders.size() == 3);
+    // assert(completedOrders.front().id == 1);
+    // assert(completedOrders.back().id == 5);
+    // assert(stlSum == rawSum);
 }
 }
 void ranges_ex1()

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <ranges>
 
 namespace
 {
@@ -16,8 +17,8 @@ namespace
     /*
     GOAL:
     C++20 fundamentally changed how iterators interface with the standard library. 
-    Instead of inheriting from `std::iterator` (which is deprecated) or requiring 
-    a full `std::iterator_traits` specialization, C++20 relies on Concepts. 
+    Instead of inheriting from `std::iterator` (which is deprecated), C++20
+    algorithms express iterator requirements with concepts.
 
     By defining the modern type aliases (`iterator_concept`, `value_type`, etc.) 
     and providing the correct operator semantics, your class automatically satisfies 
@@ -37,8 +38,7 @@ namespace
     class TlvIterator {
     public:
         // TODO: Define the essential type aliases for C++20 iterator concepts.
-        // To satisfy std::forward_iterator in C++20 without std::iterator_traits, 
-        // you strictly need `value_type` and `difference_type`. 
+        // To satisfy std::forward_iterator, provide value_type and difference_type.
         // To explicitly opt into forward (multi-pass) semantics rather than falling 
         // back to an input_iterator, define `iterator_concept` as well.
         
@@ -94,16 +94,17 @@ namespace
         TlvIterator begin(buffer.data());
         TlvIterator end = make_tlv_end(buffer);
 
-        int packet_count = 0;
-        int total_payload_bytes = 0;
+        int packetCount = 0;
+        int totalPayloadBytes = 0;
+        int typeChecksum = 0;
 
-        // TODO: Use a standard range-based for loop
-        // to iterate from `begin` to `end`.
-        // For each packet, increment `packet_count` and add `packet.length` to `total_payload_bytes`.
+        // TODO: Construct std::ranges::subrange packets{begin, end}, then use a
+        // range-based for loop. Count packets, payload bytes, and packet types.
 
-        // Uncomment asserts once the exercise is completed
-        // assert(packet_count == 3);
-        // assert(total_payload_bytes == 6);
+        // Uncomment once the exercise has been implemented.
+        // assert(packetCount == 3);
+        // assert(totalPayloadBytes == 6);
+        // assert(typeChecksum == 6);
     }
 }
 

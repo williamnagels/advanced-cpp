@@ -1,57 +1,60 @@
 #include <vector>
 #include <string>
 #include <ranges>
-#include <iostream>
+#include <algorithm>
 #include <cassert>
 
 namespace
 {
-template<std::ranges::view V, typename Pred>
-class trim_view : public std::ranges::view_interface<trim_view<V, Pred>> {
-    // TODO: Store the base view and the predicate
-    // TODO: Implement begin() and end()
+struct Player {
+    std::string name;
+    int score;
 };
-
-// TODO: Implement the closure to support the | operator
-struct trim_fn : std::ranges::range_adaptor_closure<trim_fn> {
-    // Hint: Needs to handle both (range, pred) and (pred) for piping
-};
-
-inline constexpr trim_fn trim;
 
 /*
 GOAL:
-The goal of this exercise is to implement a custom 'trim_view' and its 
-corresponding Pipe Adapter.
+Combine a range action (sorting) with a view pipeline:
+filter -> enumerate -> transform.
 
-Standard library views like 'drop_while' only work from the front. A 'trim' 
-view should lazily ignore elements at the beginning AND the end that 
-match a specific predicate.
+1. Sort the leaderboard by score, highest first.
+2. Filter out players whose score is below 1000.
+3. Use std::views::enumerate to generate a zero-based index.
+4. Transform each [index, player] pair into the requested rank string.
 
-1. The View: Create 'trim_view' inheriting from 'std::ranges::view_interface'.
-   It should wrap a range and a predicate.
-2. The Logic: Your 'begin()' should find the first element NOT matching 
-   the predicate. Your 'end()' should find the last element NOT matching 
-   the predicate
-3. The Adapter: Inherit from 'std::ranges::range_adaptor_closure' to allow 
-   the syntax: 'range | trim(predicate)'.
+Use the &Player::score projection when sorting instead of writing a comparator
+that compares complete Player objects.
 */
 void test_1() {
-    std::vector<int> data = {0, 0, 7, 8, 9, 0, 0};
-    auto is_zero = [](int i) { return i == 0; };
+    std::vector<Player> leaderboard = {
+        {"Noor", 2500},
+        {"Mina", 450},
+        {"Luis", 1800},
+        {"Priya", 900},
+        {"Akira", 3200}
+    };
 
-    // TODO: uncomment when trim has been implemented
-    //auto trimmed = data | trim(is_zero);
+    // TODO: Sort leaderboard descending with std::ranges::sort, a standard
+    // comparator, and the &Player::score projection.
+
+    // TODO: Build rankedList as filter -> enumerate -> transform.
+    // Accept the tuple-like enumerate result as auto&& before decomposing it.
+    // auto rankedList = ...;
 
     /*
-    TODO: uncommment these asserts when the above pipeline has been implemented
-    assert(std::ranges::distance(trimmed) == 3);
-    assert(*trimmed.begin() == 7);
-    assert(*std::ranges::prev(trimmed.end()) == 9);
+    TODO: Uncomment once rankedList has been implemented.
+    auto resultCount = std::ranges::distance(rankedList);
+    assert(resultCount == 3);
+    auto it = rankedList.begin();
+    assert(*it == "Rank #1: Akira (3200)");
+    auto second = std::ranges::next(it, 1);
+    assert(*second == "Rank #2: Noor (2500)");
+    auto third = std::ranges::next(it, 2);
+    assert(*third == "Rank #3: Luis (1800)");
     */
 }
 }
-void ranges_ex6()
+
+void ranges_ex8()
 {
     test_1();
 }

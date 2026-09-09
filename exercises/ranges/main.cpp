@@ -4,6 +4,9 @@ void ranges_ex3();
 void ranges_ex4();
 void ranges_ex5();
 void ranges_ex6();
+void ranges_ex7();
+void ranges_ex8();
+void ranges_ex9();
 int main()
 {
   ranges_ex1();
@@ -12,6 +15,9 @@ int main()
   ranges_ex4();
   ranges_ex5();
   ranges_ex6();
+  ranges_ex7();
+  ranges_ex8();
+  ranges_ex9();
   return 0;
 }
 

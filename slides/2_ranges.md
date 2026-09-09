@@ -15,6 +15,26 @@ theme: slide-theme
 - Views and adaptors
 - Sentinels
 ---
+## C++23 mode is not enough
+The compiler and its standard library must both implement each facility.
+
+```cpp
+#include <version>
+
+#if !defined(__cpp_lib_ranges_zip) || __cpp_lib_ranges_zip < 202110L
+#error "This exercise requires a standard library with C++23 zip support"
+#endif
+
+#if !defined(__cpp_lib_ranges_enumerate) || \
+    __cpp_lib_ranges_enumerate < 202302L
+#error "This exercise requires C++23 enumerate support"
+#endif
+```
+
+`-std=c++23` enables available C++23 features; it does not add missing library
+implementations. Use the course Docker image when the host library is older.
+
+---
 # Why do we need ranges?
 ## Iterators are fundamentally unsafe
 There are no built-in safety checks or sentinels to prevent iterator use after invalidation
@@ -543,7 +563,8 @@ By [decree](https://eel.is/c++draft/iterator.requirements.general):
 2. An **iterator** and a **count** that designate the beginning and the number of elements to which the computation is to be applied
 
 ---
-A [range](https://eel.is/c++draft/range.range#concept:range) is any object that can produce a begin and an end iterator.
+A [range](https://eel.is/c++draft/range.range#concept:range) is any object that
+can produce a begin iterator and an end sentinel. Their types may differ.
 ```cpp
 template< class T >
 concept range = requires( T& t ) {
@@ -862,6 +883,60 @@ for (int x : r)
     std::cout << x << ' ';
 ```
 ---
+## Views describe; algorithms consume
+A view pipeline does not produce a result container. It describes how elements
+will be visited when a loop or algorithm asks for them.
+
+```cpp
+auto values = data
+    | std::views::filter(is_valid)
+    | std::views::transform(to_score); // no traversal yet
+
+auto count = std::ranges::distance(values); // consumes the view
+std::ranges::for_each(values, print);        // consumes it again
+```
+
+- **View adaptors** are lazy and composable.
+- **Range algorithms** execute now and return an iterator, result object, or value.
+- A view is not a container: materialize explicitly when storage is required.
+
+---
+## Laziness has observable consequences
+Work happens during iteration, and most views continue to observe their source.
+
+```cpp
+std::vector<int> data{1, 2, 3, 4};
+auto evens = data | std::views::filter([](int value) {
+    std::cout << "testing " << value << '\n';
+    return value % 2 == 0;
+});
+
+data[1] = 20;             // the view refers to data
+for (int value : evens) { // predicate runs here
+    std::cout << value << '\n';
+}
+```
+
+Do not structurally modify the source while iterating if that invalidates the
+iterators used by the view. Ranges do not remove container invalidation rules.
+
+---
+## A pipeline keeps only supported guarantees
+Adaptors may weaken the capabilities of their input range.
+
+```cpp
+auto transformed = data | std::views::transform(square);
+static_assert(std::ranges::random_access_range<decltype(transformed)>);
+
+auto filtered = data | std::views::filter(is_even);
+static_assert(std::ranges::bidirectional_range<decltype(filtered)>);
+static_assert(!std::ranges::random_access_range<decltype(filtered)>);
+```
+
+Filtering cannot provide constant-time indexing: finding the next match requires
+searching. Constrain consumers by the guarantees they actually need.
+
+---
 # Adaptors: factories for new view instances
 An adaptor is a range factory.
 It takes one range and returns another range-like object, usually a lightweight view.
@@ -955,9 +1030,9 @@ std::ranges::filter_view<std::ranges::ref_view<std::vector<int, std::allocator<i
 ```
 - Filter predicate is part of the type? Good --> EBO
 ---
-Only possible because of Class Template Argument Deduction (CTAD, C++17) .
-
-Not possible as return value. rv must be fully qualified (or deduced).
+This spelling is practical because of Class Template Argument Deduction (CTAD,
+C++17). In interfaces, avoid naming the complete type: use `auto` return type or
+constrain the result as a range.
 ```cpp
 template< ranges::input_range V,
           std::indirect_unary_predicate<ranges::iterator_t<V>> Pred >
@@ -994,18 +1069,15 @@ The storage strategy is `ref_view`, so the vector is not copied.
 ---
 
 ## std::ranges::views::all
-`std::views::all` is a range adapter that decides how to keep the source alive.
-
-- If the input is an lvalue:  `std::ranges::ref_view<T>`.
-- If the input is an rvalue: `std::ranges::owning_view<T>`.
-
+`std::views::all` is a range adaptor that decides how to represent the source.
+- If the input is already a view: copy or move that view.
+- If the input is a non-view lvalue: `std::ranges::ref_view<T>`.
+- If the input is a non-view rvalue: `std::ranges::owning_view<T>`.
 ```cpp
-int main()
-{
+int main() {
     std::vector<int> v = {1, 2, 3};
     auto view1 = std::views::all(v); // l-value case: keep a reference to the existing vector
-    static_assert(
-        std::is_same_v<decltype(view1), std::ranges::ref_view<std::vector<int>>>,
+    static_assert(std::is_same_v<decltype(view1), std::ranges::ref_view<std::vector<int>>>,
         "Expected ref_view for lvalue"
     );
     auto view2 = std::views::all(std::vector<int>{1, 2, 3}); //r-value case: move the vector into an owning view
@@ -1176,6 +1248,47 @@ Runtime UB error intercepted by the compiler:
 Compiler returned: 1
 ```
 ---
+## How the tombstone is selected
+The range overload chooses its return type from the lifetime of the input.
+
+```cpp
+struct dangling {
+    constexpr dangling() noexcept = default;
+
+    template<class... Args>
+    constexpr dangling(Args&&...) noexcept {}
+};
+
+template<std::ranges::range R>
+using borrowed_iterator_t = std::conditional_t<
+    std::ranges::borrowed_range<R>,
+    std::ranges::iterator_t<R>,
+    dangling>;
+```
+
+`dangling` can be constructed from the iterator result, but deliberately has
+no dereference or increment operations.
+
+---
+## A simplified range algorithm
+The iterator overload does the work. The range overload changes what escapes.
+
+```cpp
+template<std::ranges::input_range R, class T>
+borrowed_iterator_t<R> my_find(R&& range, const T& value) {
+    auto result = std::find(
+        std::ranges::begin(range),
+        std::ranges::end(range),
+        value);
+
+    return result; // iterator, or converted to dangling
+}
+```
+
+For an rvalue `vector`, `R` is not a borrowed range, so the return type is
+`dangling`. For `span` or `string_view`, iterators remain valid and are returned.
+
+---
 Why does std::find return dangling while views::all returns an owning_view?
 - Algorithms return iterators. They cannot own the container.
 - Views are objects. When given an Rvalue, they move the data into an owning_view.
@@ -1260,6 +1373,62 @@ private:
 };
 ```
 ---
+## Downside: views make lifetimes less obvious
+This function returns a view containing a `ref_view` of a dead vector.
+
+```cpp
+auto even_numbers_backwards() {
+    std::vector<int> numbers{1, 2, 3, 4, 5, 6};
+
+    return numbers
+        | std::views::filter([](int n) { return n % 2 == 0; })
+        | std::views::reverse;
+} // numbers is destroyed; the returned view now dangles
+
+for (int n : even_numbers_backwards()) {
+    std::cout << n << ' '; // undefined behaviour: possibly out of bounds
+}
+```
+
+The pipeline object survives. Its underlying data does not.
+
+---
+## Similar syntax, different ownership
+An rvalue **container** is moved into an `owning_view`; a named container is
+represented by a `ref_view`.
+
+```cpp
+// Safe: the pipeline owns the temporary vector.
+auto safe = std::vector{1, 2, 3, 4}
+    | std::views::filter(is_even)
+    | std::views::reverse;
+
+// Dangerous when returned beyond numbers' lifetime.
+auto borrowed = numbers
+    | std::views::filter(is_even)
+    | std::views::reverse;
+```
+
+Do not infer ownership from the final view type being movable or returned as an
+rvalue. Ask what `views::all` did with the original source.
+
+---
+## Cache correctness is a library concern
+Forward-range views may cache positions to meet complexity guarantees. Those
+cached iterators must not accidentally survive a copy or move into different
+storage.
+
+```cpp
+auto filtered = std::vector{1, 2, 3, 4} | std::views::filter(is_even);
+(void)filtered.begin();                    // may populate a cache
+auto reversed = std::move(filtered) | std::views::reverse;
+```
+
+A conforming implementation uses a non-propagating cache or an equivalent safe
+representation. Older standard libraries have had bugs in this area: test the
+actual compiler/library combination, preferably with AddressSanitizer.
+
+---
 ## Compile-time
 - Heavy lifting is done by the type system.
 - building the pipeline is done at compile time
@@ -1267,13 +1436,151 @@ private:
 - You could get many specializations for a view (moving_average_view)
 - code size can explode
 - compile times can explode, any_view: P3411R0
+
 ---
 
-### William TODO: zip issue bij tomra
+## C++23: zip parallel ranges
+`std::views::zip` combines corresponding elements without creating a container.
+It is useful when data is stored as a structure of arrays.
+
+```cpp
+std::vector<std::string> names{"Ada", "Bjarne", "Grace"};
+std::vector<int> scores{91, 88, 95};
+
+for (auto&& [name, score] : std::views::zip(names, scores)) {
+    std::cout << name << ": " << score << '\n';
+}
+```
+
+Each element is tuple-like and refers to the underlying elements. Mutating
+`name` or `score` here mutates the source range.
+
+---
+## Zip stops at the shortest range
+The end of a zip is the first end reached by any input range.
+
+```cpp
+std::vector ids{10, 20, 30, 40};
+std::vector labels{"ten", "twenty"};
+
+auto rows = std::views::zip(ids, labels);
+assert(std::ranges::distance(rows) == 2);
+```
+
+This prevents out-of-bounds access, but a size mismatch may still be a domain
+error. Validate equal sizes separately when truncation would hide bad input.
+
+---
+## Zip, filter, transform
+Tuple-like references flow through the pipeline. Use `auto&&` with a structured
+binding so the code also works with proxy references such as `vector<bool>`.
+
+```cpp
+auto verified_names = std::views::zip(users, is_verified)
+    | std::views::filter([](auto&& row) {
+          auto&& [user, verified] = row;
+          return verified;
+      })
+    | std::views::transform([](auto&& row) {
+          auto&& [user, verified] = row;
+          return user.name;
+      });
+```
+
+The zip view owns no copies of these lvalue containers, so both must outlive the
+pipeline and its iterators.
+
 ---
 ex6.cpp
+
+---
+## Enumerate is a specialized zip
+`std::views::enumerate` (C++23) pairs each element with a zero-based index.
+
+```cpp
+for (auto&& [index, player] : std::views::enumerate(players)) {
+    std::cout << "Rank #" << index + 1 << ": " << player.name << '\n';
+}
+```
+
+Conceptually it resembles:
+```cpp
+std::views::zip(std::views::iota(std::size_t{0}), players)
+```
+
+Use `enumerate` for positions; use `zip` when combining independent ranges.
+
+---
+## Downside: wide zip types are expensive
+`zip` is variadic. Every additional input becomes part of the view, iterator,
+sentinel, reference, value type, and constraints.
+
+```cpp
+auto rows = std::views::zip(ids, names, ages, scores,
+                            teams, active, country, last_login);
+
+auto selected = rows
+    | std::views::filter([](auto&& row) { /* tuple-like proxy */ })
+    | std::views::transform([](auto&& row) { /* another view type */ });
+```
+
+The compiler instantiates operations across all component ranges. Generic
+lambdas and later adaptors add another layer of concepts and tuple machinery.
+Runtime traversal can still be cheap; compilation and diagnostics are the cost.
+
+---
+## Why each zipped range adds work
+For `zip_view<Views...>`, the library must compute and validate:
+
+- the weakest iterator category supported by every input;
+- whether all inputs are common, sized, random-access, or borrowed ranges;
+- an iterator holding one iterator per input;
+- a tuple-like proxy reference from every dereference;
+- an end condition that stops when **any** input reaches its sentinel.
+
+Keep wide pipelines behind an `auto`-returning function, avoid repeating their
+types in interfaces, and split a very wide zip when compile time becomes a
+measured problem.
+
+---
+## Does zip compile time scale linearly?
+There is no standard compile-time complexity guarantee. A flat zip of `N`
+ranges requires at least `N`-dependent work, but a pipeline can inspect that
+entire pack repeatedly.
+
+```cpp
+auto rows = std::views::zip(r1, r2, /* ... */, rN); // N component ranges
+
+auto result = rows
+    | check_1   // constrains iterator/reference properties for all N inputs
+    | check_2   // does so again
+    // ...
+    | check_N;  // N layers, each examining N components
+```
+
+That shape can cause roughly:
+
+`N + N + ... + N = O(N²)`
+
+---
+## Runtime and compile time differ
+For a zip of `N` ranges:
+
+| Operation | Typical runtime work |
+| --- | ---: |
+| increment or dereference | `O(N)` |
+| compare with end | `O(N)` |
+| process `M` rows | `O(MN)` |
+
+"zero-copy" and "zero-overhead at runtime" do **not** mean cheap compilation.
+
+Measure representative translation units with `-ftime-report` or Clang
+`-ftime-trace`; do not assume compile time is `O(N)`.
+
+---
 ex7.cpp
 ex8.cpp
+ex9.cpp
 
 ---
 <!-- _class: final-slide -->

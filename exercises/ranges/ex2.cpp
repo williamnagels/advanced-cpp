@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <numeric>
 #include <cassert>
+#include <iterator>
 
 namespace
 {
@@ -34,13 +35,13 @@ namespace
 
     class ChannelIterator {
     public:
-        // TODO:Define a set of traits to make this a valid STL iterator.
+        // TODO: Define the five legacy iterator traits.
         // These traits are used by STL algorithms to determine how to interact with your iterator.
-        // There is no reason random access cannot be implemented, 
-        // but it may be more work than is necessary for this exercise.
+        // Model LegacyInputIterator; random access is unnecessary here.
         
         // Constructor
-        ChannelIterator(const uint8_t* ptr) : m_ptr(ptr), m_pos_in_chunk(0) {}
+        ChannelIterator(const uint8_t* ptr, const uint8_t* end)
+            : m_ptr(ptr), m_end(end), m_pos_in_chunk(0) {}
 
         //TODO: Implement the dereference operator
         /*reference operator*() const {
@@ -51,9 +52,9 @@ namespace
         ChannelIterator& operator++() {
             // 1. Advance the pointer by 1 byte.
             // 2. Increment your position within the current 4-byte chunk.
-            // 3. If you have processed 4 bytes, you've reached the end of this channel's chunk.
-            //    Skip the next 8 bytes (the other two channels) to land on this channel's 
-            //    next chunk, and reset your position tracker to 0.
+            // 3. After 4 bytes, skip the other two channels in the next block.
+            // 4. Clamp m_ptr to m_end if the skip moved beyond the buffer. This
+            //    lets equality remain a real equivalence relation.
             
             // Your code here...
 
@@ -67,18 +68,17 @@ namespace
             return tmp;
         }
 
-        // Using '<' instead of '==' gracefully handles the pointer overshooting 
-        // the exact end address when skipping the 8 bytes at the very end of the buffer.
         friend bool operator!=(const ChannelIterator& a, const ChannelIterator& b) {
-            return a.m_ptr < b.m_ptr;
+            return !(a == b);
         }
 
         friend bool operator==(const ChannelIterator& a, const ChannelIterator& b) {
-            return !(a != b);
+            return a.m_ptr == b.m_ptr;
         }
 
     private:
         const uint8_t* m_ptr;
+        const uint8_t* m_end;
         int m_pos_in_chunk;
     };
 
@@ -86,11 +86,13 @@ namespace
     ChannelIterator make_channel_begin(const std::vector<uint8_t>& image, Channel c) {
         // Offset by 0 for R, 4 for G, 8 for B
         int offset = static_cast<int>(c) * 4;
-        return ChannelIterator(image.data() + offset);
+        return ChannelIterator(image.data() + offset,
+                       image.data() + image.size());
     }
 
     ChannelIterator make_channel_end(const std::vector<uint8_t>& image) {
-        return ChannelIterator(image.data() + image.size());
+        return ChannelIterator(image.data() + image.size(),
+                       image.data() + image.size());
     }
 
     void test_2() 
@@ -119,7 +121,7 @@ namespace
         // to calculate stlGSum for the Green channel.
         // What named requirements must be satisfied for this to work? (Hint: check the std::accumulate documentation)
         
-        // Uncomment assert once exercise has been completed
+        // Uncomment once the exercise has been implemented.
         // assert(stlGSum == 80);
     }
 }

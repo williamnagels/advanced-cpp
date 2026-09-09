@@ -1,8 +1,8 @@
 #include <vector>
 #include <string>
-#include <algorithm>
+#include <cassert>
 #include <numeric>
-#include <iterator>
+#include <ranges>
 namespace
 {
 struct Order {
@@ -25,8 +25,8 @@ Ranges eliminate this overhead through "Lazy Evaluation."
 2. Filter & Project: Instead of copying objects, filter the stream for 
    "Completed" orders and then "transform" (project) the stream so it only 
    contains the 'totalPrice' doubles.
-3. Consuming the View: Use a reduction algorithm to process the resulting 
-   view without ever creating an intermediate container.
+3. Consume the view with std::accumulate without creating an intermediate
+    container. Notice that this works because this pipeline is a common_range.
 */
 void test_1() {
     std::vector<Order> orders = {
@@ -37,12 +37,21 @@ void test_1() {
         {5, 10.0,  "Completed"}
     };
     
-    std::vector<Order> completedOrders;
-    double rangesSum = 0.0; 
-    // ASSERT(rangesSum == 360.0);
+    // TODO: Build completedPrices with std::views::filter and
+    // std::views::transform. Keep the Order objects in orders.
+    // auto completedPrices = ...;
+
+    double rangesSum = 0.0;
+    // TODO: Use std::accumulate(completedPrices.begin(),
+    //                           completedPrices.end(), 0.0).
+
+    // Uncomment once the exercise has been implemented.
+    // static_assert(std::ranges::view<decltype(completedPrices)>);
+    // assert(std::ranges::distance(completedPrices) == 3);
+    // assert(rangesSum == 360.0);
 }
 }
-void ranges_ex2()
+void ranges_ex4()
 {
     test_1();
 }

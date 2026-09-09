@@ -10,7 +10,10 @@ set(RANGES_SOURCES
 	ranges/ex3.cpp
 	ranges/ex4.cpp
 	ranges/ex5.cpp
-	ranges/ex6.cpp)
+	ranges/ex6.cpp
+	ranges/ex7.cpp
+	ranges/ex8.cpp
+	ranges/ex9.cpp)
 add_executable(ranges ${RANGES_SOURCES})
 target_compile_options(ranges PRIVATE -Wall -Wextra -Wpedantic)
 
