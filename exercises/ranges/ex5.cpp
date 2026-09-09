@@ -1,55 +1,64 @@
 #include <vector>
 #include <string>
 #include <ranges>
-#include <algorithm>
 #include <iostream>
-#include <cassert>
+#include <tuple>
 
 namespace
 {
-struct Player {
+struct User 
+{
     std::string name;
-    int score;
+    int age;
 };
-
 /*
 GOAL:
-The goal of this exercise is to combine a Range "Action" (sorting) with a 
-Range "View" pipeline (filter -> enumerate -> transform).
+The goal of this exercise is to work with a zip view 'std::views::zip'
 
-1. Sort: Before assigning ranks, the leaderboard must be sorted by score 
-   in descending order (highest score first).
-2. Filter: Remove any players with a score below 1000.
-3. Use an std::view to auto generate the rank (1...N) from positin in the container.
-4. Transform: Format the output string using structured bindings [index, player].
+Sometimes data is stored in "parallel vectors" rather than a single struct. 
+e.g. structure of arrays.
+Zip allows you to stitch these back together temporarily for processing.
+
+1. Zip the Ranges: Combine 'users' and 'isVerified' into a single range.
+2. Filter: Keep only the pairs where the verification bool is true.
+3. Transform: Create a string summary for each verified user. 
+   - Use C++17 Structured Bindings [u, v] inside your lambdas 
+     to unpack the tuple produced by the zip view. 
+
+Note: Structured bindings make it much clearer which part of the tuple 
+is the 'User' and which is the 'bool' compared to using std::get.
 */
 void test_1() {
-    std::vector<Player> leaderboard = {
-        {"NerdSlayer", 2500},
-        {"UrMom", 450},
-        {"Hotboy69", 1800},
-        {"PumperLord", 900},
-        {"PossiblyPutin", 3200}
+    std::vector<User> users = {
+        {"Alice", 30},
+        {"Bob", 22},
+        {"Charlie", 25},
+        {"David", 19}
     };
 
-    /*
-    auto rankedList =
-    */
-    /*
-    TODO: uncomment these asserts when code above has been fixed
-    auto resultCount = std::ranges::distance(rankedList);
-    assert(resultCount == 3);
-    auto it = rankedList.begin();
-    assert(*it == "Rank #1: PossiblyPutin (3200)");
-    auto second = std::ranges::next(it, 1);
-    assert(*second == "Rank #2: NerdSlayer (2500)");
-    auto third = std::ranges::next(it, 2);
-    assert(*third == "Rank #3: Hotboy69 (1800)");
-    */
-}
-}
+    std::vector<bool> isVerified = { true, false, true, true };
+    
+    // TODO: Create a view pipeline using zip, filter, and transform.
+    // Use structured bindings in the lambdas: [](const auto& pair) { auto& [user, verified] = pair; ... }
+    // auto verifiedSummary = ...
 
-void ranges_ex5()
+    /* Uncomment these asserts when the pipeline has been implemented
+    // 1. Check the count (Bob should be filtered out)
+    auto resultCount = std::ranges::distance(verifiedSummary);
+    assert(resultCount == 3);
+
+    // 2. Check the first element
+    auto it = verifiedSummary.begin();
+    assert(*it == "Alice (Age: 30) - Verified");
+
+    // 3. Check the last element (using ranges::next to skip Charlie)
+    auto last = std::ranges::next(it, 2); 
+    assert(*last == "David (Age: 19) - Verified");
+    */
+
+}
+}
+void ranges_ex3()
 {
     test_1();
 }

@@ -10,17 +10,16 @@ theme: slide-theme
 ---
 # William Nagels
 - SW engineer at Sioux
-- Try and stay up-to-date with recent developments in C++
-- Embedded environment, C or <= C++11
+-  Stay up-to-date with recent developments in C++
+- C++23 environment
 ---
 
 ## Planning
 - Day 1
   - Ranges
-  - Strong types 
 - Day 2
   - Coroutines
-  - Modules
+  - (opt) Modules
 ---
 # Excercises
 - Slides and exercises: https://github.com/williamnagels/advanced-cpp

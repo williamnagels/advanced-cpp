@@ -1,64 +1,113 @@
 #include <vector>
-#include <string>
-#include <ranges>
-#include <iostream>
-#include <tuple>
+#include <cstdint>
+#include <iterator>
+#include <algorithm>
+#include <cassert>
+#include <concepts>
 
 namespace
 {
-struct User 
-{
-    std::string name;
-    int age;
-};
-/*
-GOAL:
-The goal of this exercise is to work with a zip view 'std::views::zip'
-
-Sometimes data is stored in "parallel vectors" rather than a single struct. 
-e.g. structure of arrays.
-Zip allows you to stitch these back together temporarily for processing.
-
-1. Zip the Ranges: Combine 'users' and 'isVerified' into a single range.
-2. Filter: Keep only the pairs where the verification bool is true.
-3. Transform: Create a string summary for each verified user. 
-   - Use C++17 Structured Bindings [u, v] inside your lambdas 
-     to unpack the tuple produced by the zip view. 
-
-Note: Structured bindings make it much clearer which part of the tuple 
-is the 'User' and which is the 'bool' compared to using std::get.
-*/
-void test_1() {
-    std::vector<User> users = {
-        {"Alice", 30},
-        {"Bob", 22},
-        {"Charlie", 25},
-        {"David", 19}
+    struct TlvPacket {
+        uint8_t type;
+        uint8_t length;
+        const uint8_t* payload;
     };
 
-    std::vector<bool> isVerified = { true, false, true, true };
-    
-    // TODO: Create a view pipeline using zip, filter, and transform.
-    // Use structured bindings in the lambdas: [](const auto& pair) { auto& [user, verified] = pair; ... }
-    // auto verifiedSummary = ...
+    /*
+    GOAL:
+    C++20 fundamentally changed how iterators interface with the standard library. 
+    Instead of inheriting from `std::iterator` (which is deprecated) or requiring 
+    a full `std::iterator_traits` specialization, C++20 relies on Concepts. 
 
-    /* Uncomment these asserts when the pipeline has been implemented
-    // 1. Check the count (Bob should be filtered out)
-    auto resultCount = std::ranges::distance(verifiedSummary);
-    assert(resultCount == 3);
+    By defining the modern type aliases (`iterator_concept`, `value_type`, etc.) 
+    and providing the correct operator semantics, your class automatically satisfies 
+    the `std::forward_iterator` concept.
 
-    // 2. Check the first element
-    auto it = verifiedSummary.begin();
-    assert(*it == "Alice (Age: 30) - Verified");
+    PACKET LAYOUT:
+    You are parsing a raw byte buffer of TLV (Type-Length-Value) network packets.
+    Each packet has a variable size:
+    [ Type (1 byte) | Length (1 byte) | Payload ('Length' bytes) ]
 
-    // 3. Check the last element (using ranges::next to skip Charlie)
-    auto last = std::ranges::next(it, 2); 
-    assert(*last == "David (Age: 19) - Verified");
+    TASK:
+    1. Define the necessary C++20 iterator aliases.
+    2. Complete the dereference and increment operators to jump packet-to-packet.
+    3. Rely on C++20 operator synthesis for the equality check.
     */
 
+    class TlvIterator {
+    public:
+        // TODO: Define the essential type aliases for C++20 iterator concepts.
+        // To satisfy std::forward_iterator in C++20 without std::iterator_traits, 
+        // you strictly need `value_type` and `difference_type`. 
+        // To explicitly opt into forward (multi-pass) semantics rather than falling 
+        // back to an input_iterator, define `iterator_concept` as well.
+        
+        // using iterator_concept = ...
+        // using value_type = ...
+        // using difference_type = ...
+        
+        TlvIterator() = default;
+        explicit TlvIterator(const uint8_t* ptr) : m_ptr(ptr) {}
+
+        // TODO: Implement the dereference operator.
+        // It should construct and return a `TlvPacket` by reading the current memory location.
+        // TlvPacket operator*() const { ... }
+
+        // TODO: Implement the prefix increment operator (++it).
+        // Advance `m_ptr` to the start of the next packet. 
+        // Hint: The current packet occupies (2 + current length) bytes.
+        // TlvIterator& operator++() { ... }
+
+        // TODO: Implement the postfix increment operator (it++).
+        // TlvIterator operator++(int) { ... }
+
+        // TODO: Implement the equality operator. 
+        // Note: In C++20, you only need to define `operator==`. The compiler 
+        // automatically synthesizes `operator!=` for you.
+        // friend bool operator==(const TlvIterator& a, const TlvIterator& b) { ... }
+
+    private:
+        const uint8_t* m_ptr = nullptr;
+    };
+
+    // TODO: Uncomment this static_assert once your iterator is fully implemented 
+    // to verify that it satisfies the C++20 std::forward_iterator concept constraints.
+    // static_assert(std::forward_iterator<TlvIterator>, "TlvIterator does not satisfy std::forward_iterator!");
+
+    // Helper to get the end iterator
+    TlvIterator make_tlv_end(const std::vector<uint8_t>& buffer) {
+        return TlvIterator(buffer.data() + buffer.size());
+    }
+
+    void test_3() 
+    {
+        // Dummy TLV buffer simulating memory-mapped packet data
+        // Packet 1: Type 0x01, Len 0x02, Payload [0xAA, 0xBB]
+        // Packet 2: Type 0x02, Len 0x00, Payload []
+        // Packet 3: Type 0x03, Len 0x04, Payload [0x11, 0x22, 0x33, 0x44]
+        std::vector<uint8_t> buffer = {
+            0x01, 0x02, 0xAA, 0xBB,
+            0x02, 0x00,
+            0x03, 0x04, 0x11, 0x22, 0x33, 0x44
+        };
+
+        TlvIterator begin(buffer.data());
+        TlvIterator end = make_tlv_end(buffer);
+
+        int packet_count = 0;
+        int total_payload_bytes = 0;
+
+        // TODO: Use a standard range-based for loop
+        // to iterate from `begin` to `end`.
+        // For each packet, increment `packet_count` and add `packet.length` to `total_payload_bytes`.
+
+        // Uncomment asserts once the exercise is completed
+        // assert(packet_count == 3);
+        // assert(total_payload_bytes == 6);
+    }
 }
-}
+
 void ranges_ex3()
 {
-    test_1();
+    test_3();
 }

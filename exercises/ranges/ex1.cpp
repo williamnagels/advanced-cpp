@@ -18,7 +18,7 @@ composable standard algorithms.
 
 1. Filter the 'orders' vector: Copy only orders where the status is "Completed" 
    into the 'completedOrders' vector.
-2. Calculate the Sum: Use a numeric algorithm to sum the 'totalPrice' field 
+2. Calculate the Sum: Use a numeric algorithm to sum (also called accumulate) the 'totalPrice' field 
    of all orders now residing in 'completedOrders'.
 
 Note how the STL requires you to manage a temporary container to hold 
