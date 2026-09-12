@@ -58,7 +58,7 @@ There are no built-in safety checks or sentinels to prevent iterator use after i
 std::vector<int> v{1, 2, 3};
 auto it = v.begin();
 v.push_back(4);   // may reallocate, invalidates iterators
-int x = *it;      // undefined behaviour
+int x = *it;      // undefined behaviou
 ```
 
 ---
@@ -95,7 +95,7 @@ for (auto it = text; it != text + std::strlen(text); ++it) {
     ...
 }
 ```
-Upside: You could roll your own iterator
+Upside: You could roll your own iterato
 Downside: Complexity
 
 ---
@@ -188,7 +188,7 @@ auto other = std::find(lst.begin(), lst.end(), 30);
 by returning the supplied end iterator.
 
 ---
-## Algorithms that write need an output iterator
+## Algorithms that write need an output iterato
 `std::copy_if` reads one iterator pair and writes matching elements through a
 third iterator.
 
@@ -225,7 +225,7 @@ double total = std::accumulate(
 ## ex1.cpp
 Historical context. Replace one raw loop with `std::copy_if` and `std::accumulate`.
 
-The goal is to practise the legacy algorithm interface and expose the need for
+The goal is to practise the legacy algorithm interface and expose the need fo
 an intermediate container.
 
 ---
@@ -297,7 +297,7 @@ Each category adds guarantees and operations to the one above it:
 | `LegacyRandomAccessIterator` | Constant-time jumps and distance | `std::vector` |
 | `LegacyContiguousIterator` | Elements are adjacent in memory | pointers, `std::vector` |
 
-Algorithms require the weakest category for their work. Possible overloads for stronger
+Algorithms require the weakest category for their work. Possible overloads for stronge
 categories.
 
 ---
@@ -330,7 +330,7 @@ that tells algorithms which operations the iterator supports, enabling compile-t
 ---
 Deprecated since C++17:
 ```cpp
-class Iterator
+class Iterato
 ```
 Base class that provides the 5 core traits.
 There are layers of legacy
@@ -450,7 +450,7 @@ private:
 #include <vector>
 #include <string>
 #include <iterator>
-struct File { //Invisible to the user
+struct File { //Invisible to the use
     std::string name;
     std::string content; 
 };
@@ -679,7 +679,7 @@ input_or_output_iterator provides the common cursor operations: dereference
 and (weak) increment. Reading and writing are separate capabilities.
 
 ```text
-input_or_output_iterator
+input_or_output_iterato
 |-- output_iterator<I, T>   writable, usually single-pass
 `-- input_iterator          readable, possibly single-pass
         `-- forward_iterator    readable and multi-pass
@@ -719,8 +719,8 @@ This contract is checked by the compiler!
 
 ---
 
-## Associated types of a modern iterator
-C++20 concepts inspect expressions and associated types. A readable iterator
+## Associated types of a modern iterato
+C++20 concepts inspect expressions and associated types. A readable iterato
 normally declares the types that cannot be inferred reliably:
 
 ```cpp
@@ -750,7 +750,7 @@ auto distance = last - first; // may span the complete addressable range
 std::ranges::advance(it, -3); // negative for bidirectional iterators
 ```
 A custom iterator may instead use
-another signed integer type when its domain is smaller or larger than pointer
+another signed integer type when its domain is smaller or larger than pointe
 distance. `std::iter_difference_t<I>` exposes the selected type to algorithms.
 
 ---
@@ -910,7 +910,7 @@ overload set.
 [T E; ranges::begin(E) ](https://eel.is/c++draft/range.access.begin)
 - If T is an array type, ranges​::​begin(E) is expression-equivalent to t + 0.
 - If auto(t.begin()) is a valid expression whose type models input_or_output_iterator, ranges​::​begin(E) is expression-equivalent to auto(t.begin()).
--  If T is a class or enumeration type and auto(begin(t)) is a valid expression whose type models input_or_output_iterator
+-  If T is a class or enumeration type and auto(begin(t)) is a valid expression whose type models input_or_output_iterato
 
 ---
 ```cpp
@@ -1217,7 +1217,7 @@ The vector still owns the elements.
 One key feature of views is composability:
 - range → transform → filter → slice → consume
 - Do not copy the underlying data
-- The view is copied, not the container
+- The view is copied, not the containe
 
 ```cpp
 std::vector<int> v{1, 2, 3, 4, 5, 6};
@@ -1358,7 +1358,7 @@ optimization (EBO).
 
 ---
 This spelling is practical because of Class Template Argument Deduction (CTAD,
-C++17). In interfaces, avoid naming the complete type: use `auto` return type or
+C++17). In interfaces, avoid naming the complete type: use `auto` return type o
 constrain the result as a range.
 ```cpp
 template< ranges::input_range V,
@@ -1403,7 +1403,7 @@ The storage strategy is `ref_view`, so the vector is not copied.
 ```cpp
 int main() {
     std::vector<int> v = {1, 2, 3};
-    auto view1 = std::views::all(v); // l-value case: keep a reference to the existing vector
+    auto view1 = std::views::all(v); // l-value case: keep a reference to the existing vecto
     static_assert(std::is_same_v<decltype(view1), std::ranges::ref_view<std::vector<int>>>,
         "Expected ref_view for lvalue"
     );
@@ -1449,7 +1449,7 @@ ranges::copy(range, output_iterator)         -> in_out_result<I, O>
 ranges::sort(range, comparator, projection)  -> borrowed_iterator_t<R>
 ```
 
-Use an algorithm for a terminal action: search, mutate, copy, compare, or
+Use an algorithm for a terminal action: search, mutate, copy, compare, o
 produce a scalar/result object. Creating a view alone performs no traversal.
 
 ---
@@ -1465,7 +1465,7 @@ constexpr ranges::borrowed_iterator_t<R>
     sort(R&& r, Comp comp = {}, Proj proj = {});
 ```
 
-`random_access_range` checks traversal capability. `sortable` checks whether
+`random_access_range` checks traversal capability. `sortable` checks whethe
 the projected elements can be reordered using the comparator.
 
 ---
@@ -1550,11 +1550,11 @@ pipeline.
 - Consume the resulting view with std::accumulate.
 - Verify that no intermediate std::vector is created.
 
-The goal is to practise composing and consuming views, and to replace eager
+The goal is to practise composing and consuming views, and to replace eage
 copying into an intermediate container with lazy evaluation.
 
 ---
-## Custom view and adapter
+## Custom view and adapte
 Create a moving average view. Given a range of numbers A. Produce a view that represents range A as the moving average range.
 
 ```cpp
@@ -1567,7 +1567,7 @@ int main() {
 ---
 
 Define a struct 'moving_average'
-Concept used to constrain templated parameter r
+Concept used to constrain templated parameter 
 This is the adaptor, the view factory.
 ```cpp
 struct moving_average {
@@ -1612,7 +1612,7 @@ struct iterator {
     using value_type = T;
     using difference_type = std::ptrdiff_t;
     using iterator_category = std::input_iterator_tag;
-    std::ranges::iterator_t<V> it_;      // current source iterator
+    std::ranges::iterator_t<V> it_;      // current source iterato
     std::ranges::sentinel_t<V> end_;     // source range end
     std::deque<T> buf_;
     std::size_t window_;
@@ -1625,7 +1625,7 @@ struct iterator {
         // produce a moving average from buf_
     }
     iterator& operator++() {
-        ++it_;               // advance the source iterator
+        ++it_;               // advance the source iterato
         // update buf_ with the latest value
         return *this;
     }
@@ -1640,7 +1640,7 @@ struct iterator {
 
 ---
 The key idea is really simple:
-- `it_` is the source iterator
+- `it_` is the source iterato
 - `end_` is the source sentinel
 - the view's `end()` is the default sentinel of the view
 - the relation `it_ == end_` decides when the custom iterator has exhausted the source range
@@ -1971,37 +1971,100 @@ next value: 10
 
 ---
 
-## What survives optimization?
-GCC 15.2, `-O3`: raw `if (value % 2 == 0)` loop
+## A reproducible pipeline comparison
+Both functions perform the same filter, transform, and reduction:
 
-```asm
-mov    (%rdi), %edx       # load value
-lea    (%rax,%rdx), %ecx  # candidate: sum + value
-and    $1, %edx           # filter: test odd/even
-cmove  %ecx, %eax         # accept: update sum only if even
-add    $4, %rdi           # advance to next int
-cmp    %rsi, %rdi         # reached end?
-jne    ...                # loop while values remain
+```cpp
+// Keep even values >= minimum, transform x -> 3*x + 7, then sum.
+for (int value : values) {
+    if (value >= minimum && value % 2 == 0)
+        sum += transform_value(value);
+}
 ```
 
-Filtering is branchless here: `cmove` keeps the old sum for odd values.
+```cpp
+auto transformed = values
+    | std::views::filter([minimum](int value) {
+          return value >= minimum && value % 2 == 0;
+      })
+    | std::views::transform(transform_value);
+
+for (std::uint64_t value : transformed)
+    sum += value;
+```
 
 ---
 
-## The filter_view loop
+## Benchmark controls
+- Google Benchmark 1.9.4, GCC 15.2, C++23, `-O3`
+- Allocation and input generation occur outside the timed loop
+- Results are checked for equality before timing
+- Both pipeline functions are `noinline`; the transform remains inlineable
+- Nine repetitions of at least 0.2 seconds, medians reported
+- Repetitions are randomly interleaved and pinned to one CPU
+- Sizes: 1,024, 65,536, and 4,194,304 integers
 
-```asm
-mov    (%rax), %edx       # load candidate
-test   $1, %dl            # filter: test odd/even
-jne    search_next        # reject odd values
-add    %edx, %edi         # consume accepted even value
-add    $4, %rax           # advance to next int
-cmp    %rax, %rsi         # reached end?
-jne    search             # continue searching
-```
-The compiler removed the adaptor objects, iterator wrappers, and function
-calls. The loop shape differs, so zero-overhead does not mean identical
-assembly; inspect or benchmark performance-critical code.
+Patterns: all-pass, none-pass, alternating, and random-50.
+2(raw vs ranges) * 4(patterns) * 3(sizes) = 24 cases
+24 * 9 * 0.2 = 43.2 seconds
+
+---
+
+## One measured result
+Pinned WSL/Docker run, 65,536 integers (256 KiB), median CPU time:
+
+| Input pattern | Raw loop | Ranges | Ranges / raw |
+|---|---:|---:|---:|
+| all-pass | 14.3 us | 22.0 us | 1.54x |
+| none-pass | 9.43 us | 9.67 us | 1.02x |
+| alternating | 11.9 us | 17.9 us | 1.50x |
+| random-50 | 181 us | 178 us | 0.98x |
+
+--- 
+
+Why do some results converge?
+
+- none-pass: both implementations only test and reject until reaching the end;
+    `filter_view` never enters its match-consumption path;
+- random-50: unpredictable branches dominate both implementations, masking
+    much of the ranges loop's additional control flow;
+- all-pass and alternating: predictable branches make that additional search
+    and consume control flow visible, so the raw loop remains faster here.
+
+Predictability alone does not guarantee convergence. Performance converges
+when both implementations follow nearly the same path, or when a larger cost
+such as branch misprediction dominates.
+
+---
+
+## What survived optimization?
+For this workload, GCC 15.2 produced the same output with normal `-O3` and with
+loop vectorization disabled: neither implementation was SIMD-vectorized.
+
+The compiler did remove:
+- adaptor objects;
+- iterator wrappers;
+- predicate and transform function calls.
+
+The remaining loops were not identical. The raw version has one loop with an
+accept/reject path. The `filter_view` version alternates between searching for
+the next match and consuming a match. That extra control flow explains why the
+predictable accepting cases differ despite complete inlining.
+
+---
+
+## Reproduce, then interpret
+The complete experiment is in `benchmarks/ranges`:
+
+- `pipeline.cpp`: the two functions used for timing and assembly
+- `benchmark.cpp`: input patterns and Google Benchmark registration
+- `pipeline_test.cpp`: semantic equivalence checks
+- `generate_assembly.sh`: GCC and Clang assembly, with and without vectorization
+- `README.md`: Docker-only configure, build, test, benchmark, and assembly steps
+
+Zero-overhead does not promise identical assembly or identical timing. It means
+the abstraction can disappear; always measure the resulting program with
+representative data when the code is performance-critical.
 
 ---
 
@@ -2129,7 +2192,7 @@ For `zip_view<Views...>`, the library must compute and validate:
 - a tuple-like proxy reference from every dereference;
 - an end condition that stops when **any** input reaches its sentinel.
 
-Keep wide pipelines behind an `auto`-returning function, avoid repeating their
+Keep wide pipelines behind an `auto`-returning function, avoid repeating thei
 types in interfaces, and split a very wide zip when compile time becomes a
 measured problem.
 
@@ -2154,7 +2217,7 @@ That shape can cause roughly:
 `N + N + ... + N = O(N²)`
 
 ---
-## Runtime and compile time differ
+## Runtime and compile time diffe
 For a zip of `N` ranges:
 
 | Operation | Typical runtime work |

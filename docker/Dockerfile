@@ -4,5 +4,6 @@ RUN apk add --no-cache \
     g++ \
     cmake \
     clang \
+    benchmark-dev \
     ninja-build \
     && ln -sf /usr/lib/ninja-build/bin/ninja /usr/bin/ninja
