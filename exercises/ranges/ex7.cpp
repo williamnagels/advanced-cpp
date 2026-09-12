@@ -1,119 +1,153 @@
-#include <ranges>
 #include <algorithm>
-#include <vector>
-#include <span>
 #include <cassert>
+#include <ranges>
+#include <span>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace
 {
 /*
-TODO: Constrain V to be a view whose const form is both a forward_range and a
-common_range. Looking ahead must not consume the source, and each window is
+TODO: Implement a view that greedily groups adjacent costs into batches whose
+sum does not exceed a budget. A single item that exceeds the budget forms its
+own batch so iteration always makes progress.
+
+For {4, 2, 5, 3, 1} with budget 7, produce these subranges:
+    {4, 2}, {5}, {3, 1}
+
+Constrain V to be a view whose const form is both a forward_range and a
+common_range. Looking ahead must not consume the source, and each batch is
 represented by two iterators of the same type.
 
-template<... V>
-requires ...
-class sliding_window_view : public std::ranges::view_interface<sliding_window_view<V>> {
-    // TODO: Store V base_ and a range_difference_t<const V> windowSize_.
+template<std::ranges::view V>
+// TODO: Constrain V to be a view whose const form is both a forward_range and a common_range, and whose value type is arithmetic.
+class budget_batches_view
+    : public std::ranges::view_interface<budget_batches_view<V>> {
+    V base_;
+    std::ranges::range_value_t<const V> budget_{};
+
 public:
-    // TODO: Add a default constructor and a constructor taking V and window size.
-    // Reject a window size smaller than one with std::invalid_argument.
+    budget_batches_view() = default;
+
+    template<std::ranges::viewable_range R>
+    budget_batches_view(R&& range,
+                        std::ranges::range_value_t<const V> budget)
+        : base_(std::views::all(std::forward<R>(range))), budget_(budget) {
+        // TODO: Reject a negative budget with std::invalid_argument.
+    }
 
     struct iterator {
-        // Store current_, windowEnd_, and end_. Keeping windowEnd_ makes
-        // increment constant-time instead of rescanning each window.
+        using source_iterator = std::ranges::iterator_t<const V>;
         using iterator_category = std::forward_iterator_tag;
         using iterator_concept = std::forward_iterator_tag;
-        using value_type = std::ranges::subrange<std::ranges::iterator_t<const V>>;
+        using value_type = std::ranges::subrange<source_iterator>;
         using difference_type = std::ranges::range_difference_t<const V>;
         using pointer = void;
         using reference = value_type;
 
-        // TODO: Add constructors, including the default constructor required by
-        // forward_iterator.
+        source_iterator current_{};
+        source_iterator batchEnd_{};
+        source_iterator end_{};
+        std::ranges::range_value_t<const V> budget_{};
+
+        iterator() = default;
+        iterator(source_iterator current, source_iterator end,
+                 std::ranges::range_value_t<const V> budget)
+            : current_(current), batchEnd_(current), end_(end), budget_(budget) {
+            // TODO: Find the end of the first greedy batch.
+        }
 
         value_type operator*() const {
-            // TODO: Return [current_, windowEnd_).
+            // TODO: Return [current_, batchEnd_).
         }
 
         iterator& operator++() {
-            // TODO: Advance both iterators. After yielding the final complete
-            // window, move current_ to end_ so it equals the sentinel.
+            // TODO: Start at batchEnd_ and find the end of the next batch.
         }
+
         iterator operator++(int) {
-            // TODO: Implement postfix increment in terms of prefix increment.
+            auto previous = *this;
+            ++*this;
+            return previous;
         }
-        bool operator==(const iterator& other) const = default;
+
+        bool operator==(const iterator&) const = default;
         bool operator==(std::default_sentinel_t) const {
-            // TODO: No complete window remains when current_ equals end_.
+            return current_ == end_;
         }
     };
 
     iterator begin() const {
-        // TODO: Find the end of the first window with std::ranges::next.
-        // Return the end iterator immediately if a full window does not fit.
+        return {std::ranges::begin(base_), std::ranges::end(base_), budget_};
     }
-    std::default_sentinel_t end() const noexcept {
-        return {};
-    }
+
+    std::default_sentinel_t end() const noexcept { return {}; }
 };
+
+template<std::ranges::viewable_range R>
+budget_batches_view(R&&, std::ranges::range_value_t<R>)
+    -> budget_batches_view<std::views::all_t<R>>;
 */
 }
 
-// TODO: This specialization must be in std::ranges, but the exercise's view
-// type itself remains in the anonymous namespace.
+// TODO: The iterator contains source iterators and its budget, not a pointer to
+// the view object, so borrowing can follow the underlying view.
+// define enable_borrowed_range for budget_batches_view based on the underlying view.
 /*
 namespace std::ranges {
-template<typename V>
-inline constexpr bool enable_borrowed_range<::sliding_window_view<V>> =
-    enable_borrowed_range<V>;
+
 }
 */
 
 namespace
 {
-void test_sliding_window() {
-    std::vector<int> values = {1, 2, 3, 4, 5};
+void test_budget_batches() {
+    std::vector<int> values = {4, 2, 5, 3, 1};
     std::span source{values};
 
-    /*
-    TODO: Uncomment once sliding_window_view has been implemented.
+    /* TODO: Uncomment once budget_batches_view has been implemented.
+    auto batches = budget_batches_view(source, 7);
+    auto it = batches.begin();
 
-    auto windows = sliding_window_view(std::views::all(source), 3);
-    auto it = std::ranges::find_if(std::move(windows), [](auto window) {
-        return *window.begin() == 2;
+    assert(std::ranges::equal(*it++, std::vector{4, 2}));
+    assert(std::ranges::equal(*it++, std::vector{5}));
+    assert(std::ranges::equal(*it++, std::vector{3, 1}));
+    assert(it == batches.end());
+
+    auto found = std::ranges::find_if(std::move(batches), [](auto batch) {
+        return std::ranges::equal(batch, std::vector{5});
     });
-
-    static_assert(!std::same_as<decltype(it), std::ranges::dangling>);
-    assert(std::ranges::equal(*it, std::vector{2, 3, 4}));
+    static_assert(!std::same_as<decltype(found), std::ranges::dangling>);
+    assert(std::ranges::equal(*found, std::vector{5}));
     */
 }
 
-void test_dangling_window() {
-    /*
-    TODO: Uncomment once sliding_window_view has been implemented.
-
-    auto makeValues = [] { return std::vector{1, 2, 3}; };
-    auto windows = sliding_window_view(std::views::all(makeValues()), 2);
-    auto it = std::ranges::find_if(std::move(windows), [](auto) { return true; });
-    static_assert(std::same_as<decltype(it), std::ranges::dangling>);
+void test_dangling_batches() {
+    /* TODO: Uncomment once budget_batches_view has been implemented.
+    auto batches = budget_batches_view(std::vector{4, 2, 5}, 7);
+    auto found = std::ranges::find_if(std::move(batches), [](auto) {
+        return true;
+    });
+    static_assert(std::same_as<decltype(found), std::ranges::dangling>);
     */
 }
 }
 
 /*
 GOAL:
-Implement a sliding_window_view that produces subranges of size N, advancing
-one element at a time.
+Implement budget_batches_view, a domain-specific lazy grouping operation with
+no direct standard view equivalent.
 
-1. Require at least a forward range because looking ahead must not consume it.
-2. Keep the current window's begin and end so increment remains constant-time.
-3. Stop when fewer than N elements remain.
+1. Require a const forward, common source range so look-ahead is non-consuming
+   and each result can be represented as a subrange.
+2. Greedily find each batch boundary while guaranteeing forward progress.
+3. Return source subranges without allocating result containers.
 4. Propagate borrowed_range only when the underlying view is borrowed.
 */
 void ranges_ex7()
 {
-    test_sliding_window();
-    test_dangling_window();
+    test_budget_batches();
+    test_dangling_batches();
 }

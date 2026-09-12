@@ -32,7 +32,7 @@ namespace
     TASK:
     1. Define the necessary C++20 iterator aliases.
     2. Complete the dereference and increment operators to jump packet-to-packet.
-    3. Rely on C++20 operator synthesis for the equality check.
+    3. Rely on C++20 operator synthesis (see comment below) for the equality check.
     */
 
     class TlvIterator {

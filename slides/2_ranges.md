@@ -37,7 +37,21 @@ The compiler and its standard library must both implement each facility.
 implementations. Use the course Docker image when the host library is older.
 
 ---
-# Why do we need ranges?
+# A trip down memory lane
+
+Before introducing ranges, we will revisit the interfaces they evolved from:
+
+1. Problems with legacy iterator pairs.
+2. A few examples of legacy STL algorithms.
+
+This gives us the context for the design choices made by C++20 ranges.
+
+---
+# Problems with legacy iterators
+
+Why was a new model needed?
+
+---
 ## Problem: Iterator Invalidation
 There are no built-in safety checks or sentinels to prevent iterator use after invalidation
 ```cpp
@@ -155,6 +169,7 @@ If std::find fails to find anything, you must manually compare with end().
 auto it = std::find(v.begin(), v.end(), 99);
 int x = *it;   // BUG if element not found
 ```
+
 ---
 
 ## STL Algorithms use these problematics iterator pairs
@@ -169,7 +184,7 @@ std::list<int> lst = {10, 20, 30, 40};
 auto other = std::find(lst.begin(), lst.end(), 30);
 ```
 
-`std::find` takes an input pair and returns an iterator. Failure is represented
+`std::find` takes an input iterator pair and returns an iterator. Failure is represented
 by returning the supplied end iterator.
 
 ---
@@ -207,8 +222,8 @@ double total = std::accumulate(
 
 ---
 
-## Exercise: ex1.cpp
-Replace one raw loop with `std::copy_if` and `std::accumulate`.
+## ex1.cpp
+Historical context. Replace one raw loop with `std::copy_if` and `std::accumulate`.
 
 The goal is to practise the legacy algorithm interface and expose the need for
 an intermediate container.
@@ -524,10 +539,30 @@ using reference         = const std::string&;
 Feels like something exceptionally bad.
 
 ---
+# Here ends the history lesson
+And that is how things were in the past. Lets not dwell on the past.
+
+Onwards to concept-checked iterators, ranges, views, adaptors, and range algorithms.
+
+---
+## What caused the legacy mass extinction event?
+
+- **Concepts:** express and check iterator and range requirements.
+- **Customization-point objects:** provide one constrained interface.
+- **Sentinel concept:** the end condition can havea different type from the iterator.
+- **Range objects:** package a traversal source instead of passing two
+    independent iterators.
+- **Views:** store lazy transformations as lightweight range objects.
+- **Adaptor closures and `operator|`:** compose views into readable pipelines.
+- **Perfect forwarding and CTAD:** infer the complex wrapper types.
+---
 ## C++20 Iterators
 C++20: Enter concepts and type constraining.
 
 - differentiate the weak, 'legacy' unchecked named-requirements from the new, compiler-enforced std:: concepts.
+
+Lets take  a look at those concepts
+
 ---
 ## Input / Output Iterators
 The most basic iterators. Support single-pass read (Input) or write (Output) operations. Reading or writing consumes the element (e.g., stream iterators)..
@@ -535,12 +570,12 @@ The most basic iterators. Support single-pass read (Input) or write (Output) ope
 template< class I >
 concept input_iterator = 
     std::input_or_output_iterator<I> && /* *it and weakly incrementable*/        
-    std::indirectly_readable<I> &&  /* I* equality preserving*/         
+    std::indirectly_readable<I> &&  /* *it, repeated *it*/         
     std::derived_from<ITER_CONCEPT<I>, std::input_iterator_tag>;
 ```
 ---
 ## Forward iterators
-Multi-pass forward iteration. safe to copy the iterator and iterate over the same range multiple times without consuming it.
+Multi-pass forward iteration. Safe to copy the iterator and iterate over the same range multiple times without consuming it.
 ```cpp
 template< class I >
     concept forward_iterator =
@@ -561,7 +596,7 @@ template<class I>
 concept incrementable =
     std::regular<I> &&              // copyable and equality-comparable
     std::weakly_incrementable<I> &&
-    requires(I i) { { i++ } -> std::same_as<I>; };
+    requires(I i) { { i++ } -> std::same_as<I>; }; // post increment
 ```
 
 Increment is **equality-preserving**: if `a == b`, then `++a == ++b`.
@@ -684,6 +719,59 @@ This contract is checked by the compiler!
 
 ---
 
+## Associated types of a modern iterator
+C++20 concepts inspect expressions and associated types. A readable iterator
+normally declares the types that cannot be inferred reliably:
+
+```cpp
+struct iterator {
+    using value_type = Record;              // value produced by reading
+    using difference_type = std::ptrdiff_t; // signed distance type
+    using iterator_concept = std::forward_iterator_tag;
+
+    Record const& operator*() const;
+    iterator& operator++();
+};
+```
+
+- `reference` is usually derived from `decltype(*it)`.
+- `pointer` is not required by the C++20 iterator concepts.
+- `iterator_category` to support legacy  algorithms and their tag dispatch.
+
+---
+## Why `difference_type` is required
+Iterator subtraction and counting need a signed type: `end - begin` is
+positive, while `begin - end` is negative.
+
+```cpp
+using difference_type = std::ptrdiff_t;
+
+auto distance = last - first; // may span the complete addressable range
+std::ranges::advance(it, -3); // negative for bidirectional iterators
+```
+A custom iterator may instead use
+another signed integer type when its domain is smaller or larger than pointer
+distance. `std::iter_difference_t<I>` exposes the selected type to algorithms.
+
+---
+## `iterator_concept` and `iterator_category`
+The two tags serve different consumers:
+
+```cpp
+using iterator_concept  = std::forward_iterator_tag; // C++20 concepts
+using iterator_category = std::forward_iterator_tag; // legacy algorithms
+```
+
+- `iterator_concept` states the strongest C++20 iterator concept modeled.
+- `iterator_category` enables pre-C++20 tag dispatch.
+- If `iterator_concept` is absent, the concepts machinery falls back to
+    `iterator_category`, then applies additional fallback rules for pointers.
+
+The tags declare capability; semantic promises remain the author's
+responsibility.
+
+---
+
 When worlds collide:
 ```cpp
 struct ModernIter {
@@ -725,6 +813,24 @@ structured packets from a variable-length binary layout as a range.
 ---
 # Ranges
 
+The ranges library has three cooperating parts:
+
+1. **Range concepts** describe what a source can do.
+2. **Views and adaptors** lazily describe a traversal.
+3. **Algorithms** consume a range and perform work immediately.
+
+```text
+container / stream
+                | views::filter | views::transform
+                v
+            lazy view
+                | ranges::find / ranges::copy / ranges::sort
+                v
+ iterator, result object, mutation, or materialized output
+```
+
+---
+
 A [range](https://eel.is/c++draft/iterator.requirements.general) is 
 1. An **iterator** and a **sentinel** that designate the beginning and end of the computation
 2. An **iterator** and a **count** that designate the beginning and the number of elements to which the computation is to be applied
@@ -740,15 +846,75 @@ concept range = requires( T& t ) {
 };
 ```
 ---
+## Range concepts have two dimensions
+Traversal strength comes from the range's **iterator**:
+
+```text
+input_range -> forward_range -> bidirectional_range
+            -> random_access_range -> contiguous_range
+```
+
+Other concepts describe the **range as a whole** and are orthogonal:
+
+- `sized_range`: `ranges::size(r)` is available.
+- `common_range`: iterator and sentinel have the same type.
+- `borrowed_range`: iterators may outlive the range object.
+- `view`: a range designed for cheap construction and movement.
+
+A range can be forward but not sized, or contiguous but not borrowed.
+
+---
+## Sized ranges and sized sentinels
+`sized_range<R>` means `std::ranges::size(r)` is valid and constant time.
+
+```cpp
+template<std::ranges::sized_range R>
+void reserve_for(R&& range, std::vector<int>& output) {
+    output.reserve(std::ranges::size(range));
+}
+```
+
+A range may know its size without using a sized sentinel, for example through
+a container's `size()` member.
+
+---
+## Common ranges
+A `common_range` uses the same type for `begin()` and `end()`:
+
+```cpp
+template<class R>
+concept common_range = std::ranges::range<R> &&
+    std::same_as<std::ranges::iterator_t<R>,
+                 std::ranges::sentinel_t<R>>;
+```
+
+This matters when an API needs an iterator pair of one type, constructs a
+`subrange<I, I>`, or walks backward from `end()`. A sentinel-based range may
+still be forward, sized, or even random access without being common.
+
+---
+## Customization points
+A customization point gives generic code one stable interface while allowing
+user-defined types to provide type-specific behavior.
+
+```cpp
+auto first = std::ranges::begin(range);
+auto count = std::ranges::size(range);
+```
+
+The caller always uses the qualified `std::ranges` interface.
+The customization logic remains in tha tnamespace does NOT leak into the caller's
+overload set.
+
+---
 [T E; ranges::begin(E) ](https://eel.is/c++draft/range.access.begin)
 - If T is an array type, ranges​::​begin(E) is expression-equivalent to t + 0.
 - If auto(t.begin()) is a valid expression whose type models input_or_output_iterator, ranges​::​begin(E) is expression-equivalent to auto(t.begin()).
 -  If T is a class or enumeration type and auto(begin(t)) is a valid expression whose type models input_or_output_iterator
 
-ranges::begin is a customization point -> avoid namespace poisoning due to ADL
-
 ---
 ```cpp
+// namespace infiltration
 #include <iostream>
 #include <vector>
 #include <iterator>
@@ -845,7 +1011,6 @@ std::ranges::sort(v);
 ---
 ## What can a range express?
 A range can represent a container, a subrange, a view, or a custom stream of values.
-This is the same shape of operation on a wide variety of sources.
 
 ```cpp
 std::vector<int> v = {1, 2, 3, 4, 5, 6};
@@ -858,103 +1023,7 @@ for (int x : r) {
 We are no longer forced to think in terms of a pair of iterators that must match exactly.
 
 ---
-## A range can be adapted lazily
-A view is a range that does not own its data. It composes cheaply.
-
-```cpp
-std::vector<int> v = {1, 2, 3, 4, 5, 6};
-auto r1 = std::ranges::subrange(v);
-auto r2 = std::ranges::take_view(r1, 4);
-auto r3 = std::ranges::filter_view(r2,
-    [](int x) { return x % 2 == 0; });
-
-for (int x : r3) {
-    std::cout << x << ' ';
-}
-```
-
-The important point is not the type. The important point is that the range remains a view.
-
----
-## Pipeline syntax
-Once you see a range as a data source, the next step is to transform that source without copying it.
-
-```cpp
-std::vector<int> v = {1, 2, 3, 4, 5, 6};
-
-auto r = v
-    | std::ranges::views::take(4)
-    | std::ranges::views::filter([](int x) { return x % 2 == 0; });
-
-for (int x : r) {
-    std::cout << x << ' ';
-}
-```
-
-The | is not magic. It is a range being passed through another range adaptor.
-
----
-
-## A range is constrained by concepts
-Most of the useful checking happens at compile time.
-That is why the range family is organized around concepts.
-
-```cpp
-template< ranges::random_access_range R, class Comp = ranges::less,
-          class Proj = std::identity >
-requires std::sortable<ranges::iterator_t<R>, Comp, Proj>
-constexpr ranges::borrowed_iterator_t<R>
-    sort( R&& r, Comp comp = {}, Proj proj = {} );
-```
----
-We already know this concept more or less
-```cpp
-template< class T >
-concept random_access_range =
-    ranges::bidirectional_range<T> &&
-    std::random_access_iterator<ranges::iterator_t<T>>;
-```
-
-The key observation is that this is not based on the older iterator traits family.
-Ranges depend on the new and improved iterator concepts.
-
----
-## Projection: identity
-A projection is a function that extracts a key before the comparator runs.
-This removes boilerplate and makes the comparison more expressive.
-
-```cpp
-
-struct Lad {
-    std::string name;
-    int age;
-};
-
-int main() {
-    std::vector<Lad> theLads = {{"Erik", 77}, {"Bob", 33}, {"Charlie", 53}};
-    std::ranges::sort(theLads,
-        [](const auto& a, const auto& b) { return a.age > b.age; });
-    std::ranges::sort(theLads, std::ranges::greater{}, &Lad::age);
-    std::ranges::sort(theLads, [](int a, int b) { return a > b; }, &Lad::age);
-}
-```
----
-## Projection
-- The projection runs before the comparator sees the elements.
-- It can be a member pointer, a function pointer, or a lambda.
-- Projections are called twice per comparison, once for each side.
----
-## Projection in one sentence
-We transform the element into one comparable key, then compare those keys.
-
-```cpp
-std::ranges::sort(theLads, std::ranges::greater{}, &Lad::age);
-```
-
-No need to ask the caller to write an explicit comparator on the whole object.
-
----
-## A sentinel can replace an end iterator
+## Sentinels
 If a range ends on a special terminator, a sentinel can describe that end.
 
 ```cpp
@@ -975,23 +1044,162 @@ auto r = std::ranges::subrange(
 The iterator can stay lightweight while the end condition is expressed by a sentinel.
 
 ---
-## Why sentinels matter
-Not every range ends with an iterator of the same type.
-By separating the traversal end from the iterator type, we can model richer sources.
+## A sentinel can represent parser exhaustion
+```cpp
+struct element_iterator {
+    explicit element_iterator(const char* p) : cur_(p) {
+        current_ = read_next();
+    }
+    const Element& operator*() const { return *current_; }
+    element_iterator& operator++() {
+        current_ = read_next(); return *this; }
+    friend bool operator==(const element_iterator& it,
+                           std::default_sentinel_t) {
+        return !it.current_.has_value(); }
+    const char* cur_ = nullptr;
+    std::optional<Element> current_;
+    std::optional<Element> read_next(); };
+```
+`default_sentinel` carries no state; comparison asks the iterator whether the source has been exhausted.
+
+---
+## `subrange` turns iterator boundaries into a range
+`std::ranges::subrange` is a view that stores an iterator and sentinel. It does
+not transform elements or own them.
 
 ```cpp
-for (auto it = std::ranges::begin(r); it != std::ranges::end(r); ++it) {
-    std::cout << *it;
+auto tail = std::ranges::subrange(found, values.end());
+std::ranges::sort(tail);
+
+auto first_four = std::ranges::subrange(
+    values.begin(), values.begin() + 4);
+```
+
+Class template argument deduction normally supplies the iterator and sentinel
+types. Their types may differ; matching types are required only when the result
+must be a `common_range`.
+
+---
+## Sized and unsized subrange
+The third template argument records whether the size is available:
+
+```cpp
+using std::ranges::subrange;
+using std::ranges::subrange_kind;
+
+subrange first{begin, end};              // size inferred when possible
+subrange counted{begin, end, count};     // explicitly stores a size
+
+static_assert(std::ranges::sized_range<decltype(counted)>);
+```
+
+`subrange_kind::sized` requires a sized sentinel or an explicitly supplied
+count. The iterators still refer to external storage, so their invalidation and
+lifetime rules remain unchanged.
+
+---
+## Views
+A view is a range designed for cheap construction, move, and composition. It
+may refer to external data or own its source.
+
+```cpp
+std::vector<int> v = {1, 2, 3, 4, 5, 6};
+auto r1 = std::ranges::subrange(v);
+auto r2 = std::ranges::take_view(r1, 4);
+auto r3 = std::ranges::filter_view(r2,
+    [](int x) { return x % 2 == 0; });
+
+for (int x : r3) {
+    std::cout << x << ' ';
 }
 ```
 
-The concept is the same: one object describing a sequence and one end condition that need not match the iterator type exactly.
+The important point is not the type. The important point is that the range remains a view.
 
 ---
-## What is a view?
-A view is a lightweight range object.
-It *may* own the data it is looking at.
-It simply gives a new way to observe a source range.
+## The `std::ranges::view` concept
+The concept checks that a type is a range, is movable, and has opted into the
+view model:
+
+```cpp
+template<class T>
+concept view =
+    std::ranges::range<T> &&
+    std::movable<T> &&
+    std::ranges::enable_view<T>;
+```
+
+`enable_view<T>` distinguishes lightweight view types from ordinary ranges.
+The concept does not itself mean "lazy", "non-owning", or "read-only".
+
+---
+## `subrange` is a view
+
+```cpp
+std::vector<int> values{1, 2, 3, 4};
+
+auto slice = std::ranges::subrange(
+    values.begin() + 1, values.end());
+
+static_assert(std::ranges::range<decltype(slice)>);
+static_assert(std::ranges::view<decltype(slice)>);
+
+static_assert(std::ranges::range<decltype(values)>);
+static_assert(!std::ranges::view<decltype(values)>);
+```
+
+Both types are ranges. `subrange` is also a view because it is a lightweight,
+movable range that stores only its iterator, sentinel, and possibly a size.
+
+---
+## How a type becomes a view
+Standard view types, including `subrange`, already opt in. A custom type usually
+inherits from `std::ranges::view_interface`:
+
+```cpp
+class records_view
+    : public std::ranges::view_interface<records_view> {
+public:
+    iterator begin();
+    sentinel end();
+};
+
+static_assert(std::ranges::view<records_view>);
+```
+
+`view_interface` supplies the view marker and may provide convenience members
+such as `empty()`, `front()`, `back()`, and `operator[]` when supported by the
+range's capabilities.
+
+---
+## Wrapping the parser iterator in a view
+
+```cpp
+class element_range
+    : public std::ranges::view_interface<element_range> {
+public:
+    explicit element_range(const char* text) : text_(text) {}
+
+    element_iterator begin() const {
+        return element_iterator{text_};
+    }
+    std::default_sentinel_t end() const { return {}; }
+
+private:
+    const char* text_;
+};
+
+static_assert(std::ranges::view<element_range>);
+```
+
+The range supplies the iterator; the stateless sentinel represents exhaustion.
+
+---
+## Views
+We now know:
+* A view is a lightweight range object.
+* It *may* own the data it is looking at.
+* It simply gives a new way to observe a source range.
 
 ```cpp
 std::vector<int> data{1, 2, 3, 4, 5, 6};
@@ -1003,32 +1211,13 @@ for (int x : first_three) {
 }
 ```
 The vector still owns the elements.
-The view only describes a window over them.
 
 ---
-## A view can be a window over the same data
-Think of a view as a lens.
-The underlying data remains in the vector, but the view decides which slice is visible.
-
-```cpp
-std::vector<int> data{1, 2, 3, 4, 5, 6};
-
-auto left = std::ranges::subrange(data.begin(), data.begin() + 3);
-auto right = data | std::views::drop(3);
-
-for (int x : left) std::cout << x << ' ';
-for (int x : right) std::cout << x << ' ';
-```
-
-Both ranges observe the same vector.
-No copy is made. The view only changes how we see the storage.
-
----
-## Views compose
-The idea of views is composability:
+## Composing views
+One key feature of views is composability:
 - range → transform → filter → slice → consume
-- do not copy the underlying data
-- the view is copied, not the container
+- Do not copy the underlying data
+- The view is copied, not the container
 
 ```cpp
 std::vector<int> v{1, 2, 3, 4, 5, 6};
@@ -1053,23 +1242,6 @@ auto r = v
 for (int x : r)
     std::cout << x << ' ';
 ```
----
-## Views describe; algorithms consume
-A view pipeline does not produce a result container. It describes how elements
-will be visited when a loop or algorithm asks for them.
-
-```cpp
-auto values = data
-    | std::views::filter(is_valid)
-    | std::views::transform(to_score); // no traversal yet
-
-auto count = std::ranges::distance(values); // consumes the view
-std::ranges::for_each(values, print);        // consumes it again
-```
-
-- **Views** are lazy and composable.
-- **Range algorithms** execute now and return an iterator, result object, or value.
-- A view is not a container: materialize explicitly when storage is required.
 
 ---
 ## Laziness has observable consequences
@@ -1093,7 +1265,7 @@ iterators used by the view. Ranges do not remove container invalidation rules.
 
 ---
 ## A pipeline keeps only supported guarantees
-Adaptors may weaken the capabilities of their input range.
+Views may weaken the capabilities of their input range.
 
 ```cpp
 auto transformed = data | std::views::transform(square);
@@ -1108,10 +1280,9 @@ Filtering cannot provide constant-time indexing: finding the next match requires
 searching. Constrain consumers by the guarantees they actually need.
 
 ---
-# Adaptors: factories for new view instances
+# Adaptors
 An adaptor is a range factory.
 It takes one range and returns another range-like object, usually a lightweight view.
-No intermediate container is created!!
 The purpose is to keep the pipeline lazy and composable:
 range → filter → consume
 
@@ -1125,6 +1296,7 @@ for (int x : evens) {
     std::cout << x << ' ';   // 2 4 6
 }
 ```
+std::views::filter is actually an adapter not the view
 
 ---
 ## What an adaptor really does
@@ -1167,6 +1339,7 @@ for (int x : result) {
 The important idea is that every step is a view, and each view remains cheap to store and compose.
 
 ---
+## The concrete view type
 ```cpp
 int main() {
     std::vector data{1, 2, 3, 4, 5, 6};
@@ -1178,39 +1351,11 @@ int main() {
 ```
 std::ranges::filter_view<std::ranges::ref_view<std::vector<int, std::allocator<int> > >, main::{lambda(int)#1}>
 ```
----
 
-## Ranges are complicated types
-What is the real type?
-```cpp
-#include <ranges>
-#include <vector>
-#include <iostream>
-std::string demangle(const char* name);
-int main()
-{
-    std::vector<int> v = {1,2,3,4};
-    auto is_even = [](int x){ return x % 2 == 0; };
-    std::ranges::filter_view fv(v, is_even);
-    std::cout << demangle(typeid(fv).name()) << std::endl;
-}
-```
----
-```cpp
-std::string demangle(const char* name)
-{
-    int status = 0;
-    std::unique_ptr<char, void(*)(void*)> res{
-        abi::__cxa_demangle(name, nullptr, nullptr, &status),
-        std::free
-    };
-    return (status == 0) ? res.get() : name;
-}
-```
-```cpp
-std::ranges::filter_view<std::ranges::ref_view<std::vector<int, std::allocator<int> > >, main::{lambda(int)#1}>
-```
-- Filter predicate is part of the type? Good --> EBO
+The concrete type records both the source representation (`ref_view`) and the
+predicate type. Stateless predicates can usually benefit from empty base
+optimization (EBO).
+
 ---
 This spelling is practical because of Class Template Argument Deduction (CTAD,
 C++17). In interfaces, avoid naming the complete type: use `auto` return type or
@@ -1271,6 +1416,130 @@ int main() {
 }
 ```
 ---
+## Common view adaptors
+Adaptors accept a range now or return a closure for pipe syntax.
+
+```cpp
+views::filter(range, predicate)    // keep matching elements
+views::transform(range, function) // map each element
+views::take(range, count)          // first count elements
+views::drop(range, count)          // skip count elements
+views::take_while(range, predicate)
+views::drop_while(range, predicate)
+views::reverse(range)
+```
+
+Their curried forms are equivalent:
+
+```cpp
+auto active = views::filter(is_active);
+auto result = records | active | views::transform(to_name);
+```
+
+---
+## Algorithms
+Range algorithms execute immediately. Most accept the whole range and optional
+callables or projections:
+
+```cpp
+ranges::find(range, value, projection)       -> borrowed_iterator_t<R>
+ranges::find_if(range, predicate, projection)-> borrowed_iterator_t<R>
+ranges::for_each(range, function, projection)-> in_fun_result<I, F>
+ranges::copy(range, output_iterator)         -> in_out_result<I, O>
+ranges::sort(range, comparator, projection)  -> borrowed_iterator_t<R>
+```
+
+Use an algorithm for a terminal action: search, mutate, copy, compare, or
+produce a scalar/result object. Creating a view alone performs no traversal.
+
+---
+## Range algorithms are constrained by concepts
+Most of the useful checking happens at compile time.
+
+```cpp
+template<ranges::random_access_range R,
+         class Comp = ranges::less,
+         class Proj = std::identity>
+requires std::sortable<ranges::iterator_t<R>, Comp, Proj>
+constexpr ranges::borrowed_iterator_t<R>
+    sort(R&& r, Comp comp = {}, Proj proj = {});
+```
+
+`random_access_range` checks traversal capability. `sortable` checks whether
+the projected elements can be reordered using the comparator.
+
+---
+## Range concepts build on iterator concepts
+
+```cpp
+template<class T>
+concept random_access_range =
+    ranges::bidirectional_range<T> &&
+    std::random_access_iterator<ranges::iterator_t<T>>;
+```
+
+Range concepts obtain the iterator type and apply the C++20 iterator concepts.
+They do not rely only on the legacy iterator category tags.
+
+---
+## Projections
+A projection extracts a key before the comparator sees each element.
+
+```cpp
+struct Lad {
+    std::string name;
+    int age;
+};
+
+std::vector<Lad> theLads = {
+    {"Erik", 77}, {"Bob", 33}, {"Charlie", 53}
+};
+
+std::ranges::sort(
+    theLads, std::ranges::greater{}, &Lad::age);
+```
+
+The projection may be a member pointer, function, or lambda. Here the
+comparator receives two `int` age values rather than two complete `Lad` objects.
+
+---
+## Algorithm result types preserve useful state
+Ranges algorithms often return a result object instead of discarding final
+iterators or callable state.
+
+```cpp
+std::vector<int> output(values.size());
+auto [input_end, output_end] =
+    std::ranges::copy(values, output.begin());
+
+auto [last, function] = std::ranges::for_each(values, Counter{});
+std::cout << function.count;
+```
+
+Types such as `in_out_result<I, O>` and `in_fun_result<I, F>` are aggregate
+results, so structured bindings expose their members directly.
+
+---
+## Materializing a lazy pipeline
+C++20 can copy a view into an owning container:
+
+```cpp
+auto selected = values | std::views::filter(is_even);
+
+std::vector<int> stored;
+std::ranges::copy(selected, std::back_inserter(stored));
+```
+
+C++23 adds `std::ranges::to`:
+
+```cpp
+auto stored = selected | std::ranges::to<std::vector>();
+```
+
+Materialize when results must own their elements, outlive the source, or be
+traversed repeatedly without reevaluating the pipeline.
+
+---
 ## ex4.cpp
 Rewrite the order-processing workflow from `ex1.cpp` as a lazy C++20 ranges
 pipeline.
@@ -1285,9 +1554,9 @@ The goal is to practise composing and consuming views, and to replace eager
 copying into an intermediate container with lazy evaluation.
 
 ---
-## Lets write a custom view and adaptor
+## Custom view and adapter
 Create a moving average view. Given a range of numbers A. Produce a view that represents range A as the moving average range.
-Need some kind of stateful iterator, not provided by std
+
 ```cpp
 int main() {
     std::vector<double> data = {1, 2, 3, 4, 5, 6};
@@ -1336,6 +1605,7 @@ public:
     }
 };
 ```
+
 ---
 ```cpp
 struct iterator {
@@ -1367,8 +1637,8 @@ struct iterator {
     }
 }
 ```
----
 
+---
 The key idea is really simple:
 - `it_` is the source iterator
 - `end_` is the source sentinel
@@ -1376,7 +1646,25 @@ The key idea is really simple:
 - the relation `it_ == end_` decides when the custom iterator has exhausted the source range
 
 ---
-## The power of std::views::all_t
+## Why the constructor takes a `viewable_range`
+The constructor accepts a source range `R`, but the view stores `V`:
+
+```cpp
+template<std::ranges::viewable_range R>
+moving_average_view(R&& source, std::size_t window)
+        : base_(std::views::all(std::forward<R>(source))),
+            window_(window) {}
+```
+
+`viewable_range<R>` means `views::all` can safely turn the argument into a
+storable view:
+
+- an existing view is copied or moved;
+- a non-view lvalue becomes a `ref_view`;
+- a movable non-view rvalue becomes an `owning_view`.
+
+---
+## CTAD and std::views::all_t
 CTAD rule, deduce parameter V from parameter R.
 ```cpp
 template <class R>
@@ -1418,17 +1706,18 @@ int main() {
 ```
 ---
 ## ex5.cpp
-Lazily produce the difference between each pair of adjacent values.
+Lazily produce the running total of the values seen so far.
 
-- Implement pairwise_difference_view: {10, 13, 12, 20} becomes {3, -1, 8}.
-- Store the previous value and advance through the source range lazily.
-- Stop at the default sentinel when no next value remains.
+- Implement `running_total_view`: `{10, 13, 12, 20}` becomes
+    `{10, 23, 35, 55}`.
+- Store the source position and accumulated total in an input iterator.
+- Stop at the default sentinel when the source is exhausted.
 - Add the std::views::all_t deduction guide.
-- Complete the adaptor closure so range | pairwise_difference works.
+- Complete the adaptor closure so `range | running_total` works.
 - Verify that lvalues use ref_view and rvalues use owning_view.
 
 The goal is to transfer the custom view pattern from the moving-average example
-to a different stateful transformation without materializing results.
+to a stateful transformation that has no direct standard view equivalent.
 
 ---
 ## Tombestone
@@ -1463,7 +1752,7 @@ struct dangling {
 };
 template<std::ranges::range R>
 using borrowed_iterator_t = std::conditional_t<
-    std::ranges::borrowed_range<R>,
+    std::ranges::borrowed_range<R>, /*iterators outlive containers */
     std::ranges::iterator_t<R>,
     dangling>;
 ```
@@ -1507,6 +1796,24 @@ auto it = std::ranges::find(std::string_view{"Hello"}, 'e');
 static_assert(!std::same_as<decltype(it), std::ranges::dangling>);
 ```
 ---
+## Propagating borrowing through a custom view
+A wrapper view may be borrowed when its iterators remain valid after the
+wrapper object is destroyed. Often that follows the underlying view:
+
+```cpp
+template<class V>
+inline constexpr bool std::ranges::enable_borrowed_range<my_view<V>> =
+    std::ranges::enable_borrowed_range<V>;
+```
+
+This is correct only when an iterator stores everything it needs, such as
+source iterators and copied state. Do not enable borrowing when iterators point
+back into the custom view for a predicate, cache, or other state.
+
+The specialization changes algorithm return types; it does not extend the
+lifetime of underlying elements.
+
+---
 ```cpp
 template<typename T>
 struct MyCursor {
@@ -1535,42 +1842,6 @@ decltype(auto) get_first(R&& r) {
 int main() {
     decltype(auto) val = get_first(std::vector{1, 2});
 }
-```
----
-Custom sentinel: keeps iterating until std::optional is  empty
-```cpp
-struct element_iterator {
-    explicit element_iterator(const char* p)
-        : cur_(p) {
-        current_ = read_next();
-    }
-    const Element& operator*() const { return *current_; }
-    element_iterator& operator++() {
-        current_ = read_next();
-        return *this;
-    }
-    friend bool operator==(const element_iterator& it, std::default_sentinel_t) {
-        return !it.current_.has_value();
-    }
-private:
-    const char* cur_ = nullptr;
-    std::optional<Element> current_;
-    std::optional<Element> read_next() { }
-};
-```
----
-## std::ranges::view_interface
-Avoiding boilerplate
-.empty(), .size(), .front(), .back()
-```cpp
-class element_range : public std::ranges::view_interface<element_range> {
-public:
-    explicit element_range(const char* text) : text_(text) {}
-    element_iterator begin() const { return element_iterator{text_}; }
-    std::default_sentinel_t end() const { return {}; }
-private:
-    const char* text_;
-};
 ```
 ---
 ## Downside: views make lifetimes less obvious
@@ -1620,13 +1891,11 @@ storage.
 
 ```cpp
 auto filtered = std::vector{1, 2, 3, 4} | std::views::filter(is_even);
-(void)filtered.begin(); // may populate a cache
-auto reversed = std::move(filtered) | std::views::reverse;
+(void)filtered.begin(); // may populate a cache (iterator pointing to an element)
+auto reversed = std::move(filtered) | std::views::reverse; //invalidates cache
 ```
 
-A conforming implementation uses a non-propagating cache or an equivalent safe
-representation. Older standard libraries have had bugs in this area: test the
-actual compiler/library combination, preferably with AddressSanitizer.
+A conforming implementation uses a non-propagating cache or an equivalent safe representation (moving average view)
 
 ---
 ## When does filter_view execute?
@@ -1768,40 +2037,7 @@ This prevents out-of-bounds access, but a size mismatch may still be a domain
 error. Validate equal sizes separately when truncation would hide bad input.
 
 ---
-## Zip, filter, transform
-Tuple-like references flow through the pipeline. Use `auto&&` with a structured
-binding so the code also works with proxy references such as `vector<bool>`.
 
-```cpp
-auto verified_names = std::views::zip(users, is_verified)
-    | std::views::filter([](auto&& row) {
-          auto&& [user, verified] = row;
-          return verified;
-      })
-    | std::views::transform([](auto&& row) {
-          auto&& [user, verified] = row;
-          return user.name;
-      });
-```
-
-The zip view owns no copies of these lvalue containers, so both must outlive the
-pipeline and its iterators.
-
----
-## ex6.cpp
-Build a lazy summary pipeline from parallel user and verification data.
-
-- Zip `users` with `isVerified`.
-- Filter out rows whose verification value is false.
-- Transform each remaining row into the expected summary string.
-- Accept zipped rows and structured bindings as `auto&&` so the pipeline works
-    with the proxy references produced by `std::vector<bool>`.
-- Verify the number and contents of the generated summaries.
-
-The goal is to practise composing `zip`, `filter`, and `transform`, while
-handling tuple-like proxy references
-
----
 ## Enumerate is a specialized zip
 `std::views::enumerate` (C++23) pairs each element with a zero-based index.
 
@@ -1817,6 +2053,53 @@ std::views::zip(std::views::iota(std::size_t{0}), players)
 ```
 
 Use `enumerate` for positions; use `zip` when combining independent ranges.
+
+---
+## More C++23 views
+C++23 fills several common composition gaps:
+
+| View | Purpose |
+| --- | --- |
+| `views::slide(n)` | overlapping windows of exactly `n` elements |
+| `views::chunk(n)` | consecutive non-overlapping blocks |
+| `views::stride(n)` | every `n`th element |
+| `views::chunk_by(pred)` | split when adjacent elements stop matching |
+| `views::adjacent<N>` | tuples of `N` adjacent elements |
+| `views::adjacent_transform<N>(fn)` | transform adjacent tuples |
+| `views::join_with(delimiter)` | flatten nested ranges with separators |
+
+---
+## Standard views replace common custom loops
+
+```cpp
+#include <ranges>
+#include <vector>
+#include <iostream>
+#include <algorithm>
+int main()
+{
+    std::vector values = {10, 20, 30 , 40, 50, 60};
+
+    auto moving_average = values | std::views::adjacent_transform<3>([](int a, int b, int c) { return a + b + c; });
+    std::ranges::for_each(moving_average, [](auto const& v){
+        std::cout << v << std::endl;
+    });
+}
+```
+Replace a generic sliding-window view and a pairwise-difference view. 
+
+---
+## ex6.cpp
+Revisit the channel image from `ex2.cpp` using C++23 views.
+
+- Split the flat image into 4-byte channel chunks with `views::chunk`.
+- Create lazy red, green, and blue streams using `drop` and `stride(3)`.
+- Zip those streams so each iteration yields the three channel chunks from one image block.
+- Use a structured binding to access the R, G, and B chunks.
+- Verify the number of image blocks and their channel values.
+
+The goal is to replace the custom channel iterator from `ex2.cpp` with
+composable views over the same interleaved storage.
 
 ---
 ## Downside: wide zip types are expensive
@@ -1887,17 +2170,18 @@ Measure representative translation units with `-ftime-report` or Clang
 
 ---
 ## ex7.cpp
-Implement a `sliding_window_view` that lazily produces overlapping subranges.
+Implement `budget_batches_view`, which greedily groups adjacent costs without
+exceeding a budget.
 
 - Require a const `forward_range` and `common_range` source.
-- Track the current window's beginning and end for constant-time increment.
-- Reject window sizes below one and stop when no complete window remains.
-- Expose each window as a `std::ranges::subrange`.
+- Produce `{4, 2}`, `{5}`, `{3, 1}` from `{4, 2, 5, 3, 1}` with budget 7.
+- Track each batch's beginning and end while guaranteeing forward progress.
+- Expose each batch as a `std::ranges::subrange` without allocating.
 - Propagate `borrowed_range` only when the underlying view is borrowed.
 - Verify both safe iterator returns and `std::ranges::dangling`.
 
-The goal is to practise iterator state, range constraints, and conditional
-borrowed-range behavior in a custom view.
+The goal is to implement domain-specific lazy grouping while practising range
+constraints, subrange-valued iteration, and conditional borrowing.
 
 ---
 ## ex8.cpp

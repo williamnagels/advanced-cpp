@@ -15,7 +15,7 @@ namespace
     /*
     GOAL:
     The goal of this exercise is to write a custom legacy iterator that navigates a specific
-    memory layout, allowing standard algorithms to seamlessly process complex data.
+    memory layout, allowing standard algorithms to process complex data.
 
     IMAGE LAYOUT:
     You have a 3-channel RGB image stored as a flat byte blob (std::vector<uint8_t>).
@@ -37,7 +37,7 @@ namespace
     public:
         // TODO: Define the five legacy iterator traits.
         // These traits are used by STL algorithms to determine how to interact with your iterator.
-        // Model LegacyInputIterator; random access is unnecessary here.
+        // Model atleast LegacyInputIterator
         
         // Constructor
         ChannelIterator(const uint8_t* ptr, const uint8_t* end)
