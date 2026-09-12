@@ -14,6 +14,8 @@ theme: slide-theme
 - What is the definition of a range?
 - Views and adaptors
 - Sentinels
+- Tombestones
+- Compile time impact
 ---
 ## C++23 mode is not enough
 The compiler and its standard library must both implement each facility.
@@ -36,7 +38,7 @@ implementations. Use the course Docker image when the host library is older.
 
 ---
 # Why do we need ranges?
-## Iterators are fundamentally unsafe
+## Problem: Iterator Invalidation
 There are no built-in safety checks or sentinels to prevent iterator use after invalidation
 ```cpp
 std::vector<int> v{1, 2, 3};
@@ -44,13 +46,38 @@ auto it = v.begin();
 v.push_back(4);   // may reallocate, invalidates iterators
 int x = *it;      // undefined behaviour
 ```
+
 ---
-## Iterators and sentinels
+Different containers have different invalidation rules.
+A code change my invalidate an assumption
+| Container     | push_back invalidates? |
+| ------------- | ---------------------- |
+| `std::vector` | Possibly               |
+| `std::list`   | Never                  |
+
+---
+## Problem: Iterator mismatch
+Legacy algorithms check iterator types, but cannot check whether both iterators
+belong to the same range.
+
+```cpp
+std::vector<int> values{1, 2, 3};
+std::vector<int> other{4, 5, 6};
+
+int total = std::accumulate(
+    values.begin(),
+    other.end(), // Wrong container, but the iterator type matches
+    0);
+```
+Traversing from one container into another is undefined behaviour.
+
+---
+## Problem: No sentinels
 Iterators come in pairs of the same type: begin and end.
 This makes some patterns awkward (e.g., searching until a terminator).
 ```cpp
-// Can't stop at '\0' without computing std::end(...)
-for (auto it = std::begin(arr); it != std::end(arr); ++it) {
+// Iterator pair requires finding an end iterator first.
+for (auto it = text; it != text + std::strlen(text); ++it) {
     ...
 }
 ```
@@ -58,7 +85,7 @@ Upside: You could roll your own iterator
 Downside: Complexity
 
 ---
-## Composability
+## Problem: Composability
 Iterators do not compose well.
 You typically end up writing loops instead of 'chaining' operations.
 ```cpp
@@ -89,12 +116,18 @@ Upside: Readability
 Downside: CPU usage, Memory usage
 
 ---
-## Eager vs lazy
-Standard STL algorithms are **eager**. They process the entire range immediately, producing a full result before the next step begins.
+## Problem: Eager vs lazy
+Standard algorithms execute immediately. When chained through intermediate
+containers, each stage must finish before the next begins.
 
-- Large-scale datasets that don't fit in RAM.
-- Streaming data, where the 'end iterator' is not reachable
-    - Custom iterators
+**Eager can be good:**
+- Predictable execution and side effects;
+- The result is stored and can be reused;
+
+**Eager materialization can be bad:**
+- Intermediate containers cost memory and allocation;
+- Later stages cannot stop earlier stages early;
+- Unsuitable for unbounded streams or data larger than memory.
 
 ---
 ```cpp
@@ -106,84 +139,152 @@ std::vector<int> result;
 std::transform(intermediate.begin(), intermediate.end(), std::back_inserter(result), 
                [](int x) { return x * 10; });
 ```
-How are we supposed to transform 1 element only exit?
-say, early exit? Copy has been done already.
+What if only the first transformed match is needed? 
+-> `std::copy_if` already scanned the entire input
+-> Stored every match before `std::transform` begins.
 
 ---
-## How to handle failure?
+## Problem: Handeling failure
 
 If std::find fails to find anything, you must manually compare with end().
 
 - Dereferencing the end() iterator is UB.
 - Compiler does not help you here.
 
-Example
 ```cpp
 auto it = std::find(v.begin(), v.end(), 99);
 int x = *it;   // BUG if element not found
 ```
 ---
-## Iterator Invalidation
-Different containers have different invalidation rules.
-| Container     | push_back invalidates? |
-| ------------- | ---------------------- |
-| `std::vector` | Possibly               |
-| `std::list`   | Never                  |
 
----
+## STL Algorithms use these problematics iterator pairs
+[Algorithms](https://en.cppreference.com/cpp/algorithm) are decoupled from containers. The same algorithm works with any
+iterator type that provides the operations it requires.
 
-**Interface to containers**
-Decouple algorithms from data structures -> a single generic function can process any container type.
 ```cpp
 std::vector<int> vec = {10, 20, 30, 40};
 auto it = std::find(vec.begin(), vec.end(), 30);
-if (it != vec.end()) { /* found */ }
-```
-```cpp
+
 std::list<int> lst = {10, 20, 30, 40};
-auto it = std::find(lst.begin(), lst.end(), 40);
-if (it != lst.end()) { /* found */ }
+auto other = std::find(lst.begin(), lst.end(), 30);
 ```
----
 
-ex1.cpp:
-Convert a raw for loop to an STL algorithm.
-
-The goal:
-(re)discover the pain of using iterators.
+`std::find` takes an input pair and returns an iterator. Failure is represented
+by returning the supplied end iterator.
 
 ---
-# Legacy Iterators (>C++20)
-
-An iterator is an object that points to a specific element within a data structure, functioning much like a smart cursor.
-
-Since C++20, we have 'named requirements':
-
-| cppreference          | standard
-| --------------------- | --------
-| LegacyInputIterator   | [Cpp17InputIterator](https://eel.is/c++draft/iterator.cpp17#input.iterators)
-| LegacyIterator        | [Cpp17Iterator](https://eel.is/c++draft/iterator.cpp17#iterator.iterators)
-
-The standard specifies list of requirements but they are not enforced or
-checked.
-
----
-Conceptification of a LegacyIterator ([Cpp17Iterator](https://eel.is/c++draft/iterator.cpp17#iterator.iterators)):
+## Algorithms that write need an output iterator
+`std::copy_if` reads one iterator pair and writes matching elements through a
+third iterator.
 
 ```cpp
-template<class I>
-concept __LegacyIterator =
-    requires(I i)
-    {
-        {   *i } -> __Referenceable;
-        {  ++i } -> std::same_as<I&>;
-        { *i++ } -> __Referenceable;
-    } && std::copyable<I>;
+std::vector<Order> completedOrders;
+
+std::copy_if(orders.begin(), orders.end(),
+             std::back_inserter(completedOrders),
+             [](const Order& order) {
+                 return order.status == "Completed";
+             });
 ```
-[Named requirement](https://cppreference.com/cpp/named_req)
+
+`std::back_inserter` adapts assignment into `completedOrders.push_back(...)`.
+The algorithm does not know which container receives the output.
+
+---
+## Algorithms that reduce produce one value
+`std::accumulate` combines an iterator pair into a single value.
+
+```cpp
+double total = std::accumulate(
+    completedOrders.begin(), completedOrders.end(), 0.0,
+    [](double sum, const Order& order) {
+        return sum + order.totalPrice;
+    });
 ```
- Failure to do so may result in very complex compiler diagnostics.
+
+- `0.0` is the initial value and determines the result type.
+- The lambda combines the running total with the next element.
+
+---
+
+## Exercise: ex1.cpp
+Replace one raw loop with `std::copy_if` and `std::accumulate`.
+
+The goal is to practise the legacy algorithm interface and expose the need for
+an intermediate container.
+
+---
+# Legacy iterators: history
+
+- **1994:** the STL was accepted into the draft C++ standard.
+- **C++98:** iterator-based containers and algorithms were standardized.
+- **C++20:** concepts introduced compiler-checkable iterator contracts.
+
+The original iterator model separated traversal from storage:
+
+```cpp
+std::find(first, last, value);
 ```
+
+The algorithm does not need to know whether the iterators came from a
+`vector`, `list`, raw array, or user-defined type.
+
+Today this pre-concepts model is called the **legacy iterator model**.
+
+---
+## Legacy iterator named requirements
+
+The standard described iterator contracts as **named requirements**:
+
+| cppreference | Current standard terminology |
+| --- | --- |
+| `LegacyIterator` | [Cpp17Iterator](https://eel.is/c++draft/iterator.cpp17#iterator.iterators) |
+| `LegacyInputIterator` | [Cpp17InputIterator](https://eel.is/c++draft/iterator.cpp17#input.iterators) |
+
+A `LegacyIterator` is expected to be copyable and support:
+
+```cpp
+*it;    // dereference
+++it;   // advance
+*it++;  // dereference, then advance
+```
+`std::iterator_traits<X>::difference_type` must be a signed integer type or `void`.
+
+---
+
+## Legacy iterator categories: read and write
+
+What an iterator allows an algorithm to do:
+
+| Category | Capability | Typical example |
+| --- | --- | --- |
+| `LegacyInputIterator` | Read values in a single pass | `std::istream_iterator` |
+| `LegacyOutputIterator` | Write values in a single pass | `std::back_insert_iterator` |
+
+Input and output iterators are the weakest useful categories: one-way stream
+
+```cpp
+std::copy(input_begin, input_end, output_begin);
+```
+
+`std::copy` reads through an input iterator and writes through an output
+iterator.
+
+---
+## Legacy iterator categories: traversal
+
+Each category adds guarantees and operations to the one above it:
+
+| Category | Additional capability | Typical example |
+| --- | --- | --- |
+| `LegacyForwardIterator` | Multi-pass forward traversal | `std::forward_list` |
+| `LegacyBidirectionalIterator` | Move backward with `--it` | `std::list` |
+| `LegacyRandomAccessIterator` | Constant-time jumps and distance | `std::vector` |
+| `LegacyContiguousIterator` | Elements are adjacent in memory | pointers, `std::vector` |
+
+Algorithms require the weakest category for their work. Possible overloads for stronger
+categories.
+
 ---
 ## Legacy algorithms
 
@@ -192,13 +293,12 @@ Lets take a look at 1 declaration of [std::find](https://eel.is/c++draft/alg.fin
 template<class InputIterator, class T = iterator_traits<InputIterator>::value_type>
   constexpr InputIterator find(InputIterator first, InputIterator last, const T& value);
 ```
-If we then look-up [InputIterator](https://eel.is/c++draft/algorithms.requirements):
+If we then look up [InputIterator](https://eel.is/c++draft/algorithms.requirements):
 ```
 If an algorithm's template parameter is named InputIterator,
 the template argument shall meet the Cpp17InputIterator requirements ([input.iterators]).
 ```
-This is contract is NOT enforced by the compiler.
-[cppreference](https://cppreference.com/cpp/algorithm/find):
+This contract is NOT enforced by the compiler. [cppreference](https://cppreference.com/cpp/algorithm/find):
 ```
 InputIt must meet the requirements of LegacyInputIterator.
 ```
@@ -210,7 +310,7 @@ To be useable by legacy algorithms (e.g. std::find), types NEED to have:
 - difference_type: A signed integer type that can represent the distance between two iterators.
 - reference: The reference type of the element (usually value_type&).
 - pointer: The pointer type of the element (usually value_type*).
-- iterator_category: A tag (e.g., std::forward_iterator_tag std::random_access_iterator_tag) 
+- iterator_category: A tag (e.g., std::forward_iterator_tag) 
 that tells algorithms which operations the iterator supports, enabling compile-time optimizations (tag dispatching).
 ---
 Deprecated since C++17:
@@ -259,37 +359,7 @@ int main() {
    10 |     static_assert(std::is_same_v<std::iterator_traits<InvalidIterator>::value_type, int>);
       |    
 ```
----
-```cpp
-class MyIntIterator {
-public:
-    using iterator_category = std::forward_iterator_tag;
-    using difference_type   = std::ptrdiff_t;
-    using value_type        = int;
-    using pointer           = int*;
-    using reference         = int&;
-    explicit MyIntIterator(pointer ptr) : m_ptr(ptr) {}
-    reference operator*() const { return *m_ptr; }
-    pointer operator->() { return m_ptr; }
-    MyIntIterator& operator++() {
-        m_ptr++;
-        return *this;
-    }
-    MyIntIterator operator++(int) {
-        MyIntIterator tmp = *this;
-        ++(*this);
-        return tmp;
-    }
-    friend bool operator==(const MyIntIterator& a, const MyIntIterator& b) {
-        return a.m_ptr == b.m_ptr;
-    }
-    friend bool operator!=(const MyIntIterator& a, const MyIntIterator& b) {
-        return a.m_ptr != b.m_ptr;
-    }
-private:
-    pointer m_ptr;
-};
-```
+
 ---
 ## Tag dispatching
 ```cpp
@@ -327,7 +397,39 @@ namespace detail {
     }
 }
 ```
+
 ---
+```cpp
+struct MyIntIterator {
+    using iterator_category = std::forward_iterator_tag;
+    using difference_type   = std::ptrdiff_t;
+    using value_type        = int;
+    using pointer           = int*;
+    using reference         = int&;
+    explicit MyIntIterator(pointer ptr) : m_ptr(ptr) {}
+    reference operator*() const { return *m_ptr; }
+    pointer operator->() { return m_ptr; }
+    MyIntIterator& operator++() {
+        m_ptr++;
+        return *this;
+    }
+    MyIntIterator operator++(int) {
+        MyIntIterator tmp = *this;
+        ++(*this);
+        return tmp;
+    }
+    friend bool operator==(const MyIntIterator& a, const MyIntIterator& b) {
+        return a.m_ptr == b.m_ptr;
+    }
+    friend bool operator!=(const MyIntIterator& a, const MyIntIterator& b) {
+        return a.m_ptr != b.m_ptr;
+    }
+private:
+    pointer m_ptr;
+};
+```
+---
+
 ```cpp
 #include <iostream>
 #include <vector>
@@ -338,15 +440,14 @@ struct File { //Invisible to the user
     std::string content; 
 };
 struct Directory {
+private:
     std::vector<File> files;
-    //public API
+public:
     TextIterator begin() const { return TextIterator(files.begin()); }
     TextIterator end() const   { return TextIterator(files.end()); }
 };
 ```
-We want to loop over a set of files in a directory.
-The concept of a 'File' is an implementation detail the user
-of our lib does not know of this.
+We want to loop over a set of files in a directory. The concept of a 'File' is an implementation detail the user of our lib does not know of this.
 
 ---
 ```cpp
@@ -397,14 +498,22 @@ int main() {
     return 0;
 }
 ```
----
-
- ex2.cpp:
-Write a custom legacy iterator for image data.
 
 ---
+## Exercise: ex2.cpp
+Complete ChannelIterator so an STL algorithm can traverse one channel of
+interleaved RGB image data.
 
-At this point you might be thinking? SFINAE? Non compiler enforced contract?
+- Define the five legacy iterator traits.
+- Implement dereference and increment for the channel memory layout.
+- Use `std::accumulate` to sum the green channel.
+
+The goal is to practise the legacy iterator named requirements and hide a
+non-trivial storage layout behind a familiar iterator interface.
+
+---
+
+At this point you should be thinking: Non compiler enforced contract?
 ```cpp
 using iterator_category = std::forward_iterator_tag;
 using value_type        = std::string;
@@ -412,7 +521,7 @@ using difference_type   = std::ptrdiff_t;
 using pointer           = const std::string*;
 using reference         = const std::string&;
 ```
-Feels like something from c++17? Yes!
+Feels like something exceptionally bad.
 
 ---
 ## C++20 Iterators
@@ -425,8 +534,8 @@ The most basic iterators. Support single-pass read (Input) or write (Output) ope
 ```cpp
 template< class I >
 concept input_iterator = 
-    std::input_or_output_iterator<I> &&        
-    std::indirectly_readable<I> &&           
+    std::input_or_output_iterator<I> && /* *it and weakly incrementable*/        
+    std::indirectly_readable<I> &&  /* I* equality preserving*/         
     std::derived_from<ITER_CONCEPT<I>, std::input_iterator_tag>;
 ```
 ---
@@ -437,9 +546,28 @@ template< class I >
     concept forward_iterator =
         std::input_iterator<I> &&
         std::derived_from</*ITER_CONCEPT*/<I>, std::forward_iterator_tag> &&
-        std::incrementable<I> &&
+        std::incrementable<I> /*equality preserving ++ operator*/ &&
         std::sentinel_for<I, I>;
 ```
+---
+## Why `incrementable` enables multiple passes
+
+input_iterator only requires weakly_incrementable: copies may share state.
+
+incrementable strengthens this contract:
+
+```cpp
+template<class I>
+concept incrementable =
+    std::regular<I> &&              // copyable and equality-comparable
+    std::weakly_incrementable<I> &&
+    requires(I i) { { i++ } -> std::same_as<I>; };
+```
+
+Increment is **equality-preserving**: if `a == b`, then `++a == ++b`.
+Advancing one copy must not change what another copy refers to. This semantic
+multi-pass promise cannot be proved by the compiler.
+
 ---
 ## Bidirectional Iterators
 Forward guarantees, plus the ability to iterate backwards step-by-step (supports --it).
@@ -455,7 +583,7 @@ template< class I >
 ```
 ---
 ## Random access iterators
-Constant time O(1) jumps (it + n), distance calculations, and relational comparisons (it1 < it2).
+Constant time O(1) jumps (it + n), distance calculations, and relational comparisons (it1 < it2). Time complexity is a promise by the author.
 ```cpp
 template< class I >
     concept random_access_iterator =
@@ -480,7 +608,7 @@ template< class I >
     concept contiguous_iterator =
         std::random_access_iterator<I> &&
         std::derived_from</*ITER_CONCEPT*/<I>, std::contiguous_iterator_tag> &&
-        std::is_lvalue_reference_v<std::iter_reference_t<I>> &&
+        std::is_lvalue_reference_v<std::iter_reference_t<I>> && /* detect proxy*/
         std::same_as<std::iter_value_t<I>,
                      std::remove_cvref_t<std::iter_reference_t<I>>> &&
         requires(const I& i) {
@@ -490,11 +618,42 @@ template< class I >
 ```
 - C-API Interoperability; memcpy
 ---
-You might say: whats the point of the tags. eg: input_iterator_tag?
+## std::to_address
 
-- Two different iterator types might share an identical API (they both support *it, ++it, and ==)
-    - one might be a single-pass stream iterator: input iterator (std::istream_iterator)
-    - the other a multi-pass container iterator: forward iterator (std::vector::iterator).
+std::to_address(i) exposes the raw pointer to the element referenced by i.
+A pointer-backed iterator usually enables it through operator->():
+
+```cpp
+T& operator*() const  { return *ptr; }
+T* operator->() const { return ptr; }
+```
+
+The concept checks that dereference returns a real T&, not a proxy, and that
+std::to_address(i) returns the corresponding T*.
+The iterator author promises:
+```cpp
+std::to_address(i)     == std::addressof(*i)
+std::to_address(i + n) == std::to_address(i) + n
+```
+The address relationships are semantic requirements that the compiler cannot prove.
+
+---
+## Iterator concepts: two branches
+
+input_or_output_iterator provides the common cursor operations: dereference
+and (weak) increment. Reading and writing are separate capabilities.
+
+```text
+input_or_output_iterator
+|-- output_iterator<I, T>   writable, usually single-pass
+`-- input_iterator          readable, possibly single-pass
+        `-- forward_iterator    readable and multi-pass
+```
+
+- The standard traversal hierarchy describes **readable** (input) iterators.
+- Output capability is orthogonal and depends on the value type `T`.
+- There is no standard multi-pass output concept; you could combine
+    `output_iterator` with `incrementable` and `sentinel_for`.
 
 ---
 By explicitly specifying using iterator_concept = std::forward_iterator_tag;, the author of forward_list is telling the compiler:
@@ -508,7 +667,7 @@ Input Iterator (std::input_iterator_tag): Supports ++, but is single-pass.
 Forward Iterator (std::forward_iterator_tag): Supports ++, and is multi-pass.
 
 ---
-## Using c++20 Iterators
+## Using C++20 Iterators
 Constrain type I1 and I2 to random_access_iterator. 
 Similar to the tag dispatch example earlier.
 ```cpp
@@ -551,15 +710,23 @@ stl_algo.h:3863:13: error: no type named 'value_type' in 'struct std::iterator_t
  3863 |       using _ValT = typename iterator_traits<_InputIterator>::value_type;
 ```
 ---
-ex3.cpp:
-Write a >=C++20 iterator to analyze packet data.
+## Exercise: ex3.cpp
+Complete TlvIterator so it traverses variable-length TLV packets in a raw
+byte buffer.
+
+- Define the C++20 aliases, including iterator_concept.
+- Verify the iterator with `std::forward_iterator`.
+- Create a `std::ranges::subrange` and calculate the packet count, total
+    payload size, and type checksum.
+
+The goal is to practise building a concept-checked C++20 iterator and exposing
+structured packets from a variable-length binary layout as a range.
 
 ---
 # Ranges
 
-By [decree](https://eel.is/c++draft/iterator.requirements.general):
-
-1. A range is an **iterator** and a **sentinel** that designate the beginning and end of the computation
+A [range](https://eel.is/c++draft/iterator.requirements.general) is 
+1. An **iterator** and a **sentinel** that designate the beginning and end of the computation
 2. An **iterator** and a **count** that designate the beginning and the number of elements to which the computation is to be applied
 
 ---
@@ -614,6 +781,13 @@ int main() {
 [Ranges-v3](https://github.com/ericniebler/range-v3). The reference implementation for c++ ranges
 cppreference also uses this term 'customization point'
 
+ADL applies to an **unqualified function call** such as `begin(value)`.
+It does not apply when calling an already-selected function object:
+
+```cpp
+std::ranges::begin(value); // calls begin.operator()(value)
+```
+
 ---
 ```cpp
     struct _Begin
@@ -623,12 +797,7 @@ cppreference also uses this term 'customization point'
 	static consteval bool
 	_S_noexcept()
 	{
-	  if constexpr (is_array_v<remove_reference_t<_Tp>>)
-	    return true;
-	  else if constexpr (__member_begin<_Tp>)
-	    return noexcept(_GLIBCXX_AUTO_CAST(std::declval<_Tp&>().begin()));
-	  else
-	    return noexcept(_GLIBCXX_AUTO_CAST(begin(std::declval<_Tp&>())));
+        ...
 	}
     public:
       template<__maybe_borrowed_range _Tp>
@@ -707,7 +876,7 @@ for (int x : r3) {
 The important point is not the type. The important point is that the range remains a view.
 
 ---
-## From pipeline to view
+## Pipeline syntax
 Once you see a range as a data source, the next step is to transform that source without copying it.
 
 ```cpp
@@ -722,9 +891,10 @@ for (int x : r) {
 }
 ```
 
-The arrow is not magic. It is a range being passed through another range adaptor.
+The | is not magic. It is a range being passed through another range adaptor.
 
 ---
+
 ## A range is constrained by concepts
 Most of the useful checking happens at compile time.
 That is why the range family is organized around concepts.
@@ -754,6 +924,7 @@ A projection is a function that extracts a key before the comparator runs.
 This removes boilerplate and makes the comparison more expressive.
 
 ```cpp
+
 struct Lad {
     std::string name;
     int age;
@@ -896,7 +1067,7 @@ auto count = std::ranges::distance(values); // consumes the view
 std::ranges::for_each(values, print);        // consumes it again
 ```
 
-- **View adaptors** are lazy and composable.
+- **Views** are lazy and composable.
 - **Range algorithms** execute now and return an iterator, result object, or value.
 - A view is not a container: materialize explicitly when storage is required.
 
@@ -942,7 +1113,7 @@ An adaptor is a range factory.
 It takes one range and returns another range-like object, usually a lightweight view.
 No intermediate container is created!!
 The purpose is to keep the pipeline lazy and composable:
-range → filter → transform → take → consume
+range → filter → consume
 
 ```cpp
 std::vector<int> data{1, 2, 3, 4, 5, 6};
@@ -965,8 +1136,19 @@ Common examples:
 - std::views::transform: map each element to another value
 - std::views::take: stop after N elements
 
-The adaptor does not eagerly copy or sort anything.
-It composes with the next adaptor and with the algorithm that consumes the range.
+--- 
+
+Type-wise, the adaptor and the view are different objects:
+
+```cpp
+auto is_even = [](int value) { return value % 2 == 0; };
+auto adaptor = std::views::filter(is_even); // unspecified closure type
+auto filtered = data | adaptor;             // concrete view type
+
+```
+
+`std::views::filter` is a factory object. Its result wraps the source and
+predicate in a `std::ranges::filter_view`; it does not copy matching elements.
 
 ---
 
@@ -1089,13 +1271,23 @@ int main() {
 }
 ```
 ---
-rewrite ex1 using ranges.
-ex4.cpp
+## ex4.cpp
+Rewrite the order-processing workflow from `ex1.cpp` as a lazy C++20 ranges
+pipeline.
+
+- Filter the orders whose status is "Completed".
+- Transform each matching Order into its totalPrice.
+- Chain both adaptors with the pipe operator (|).
+- Consume the resulting view with std::accumulate.
+- Verify that no intermediate std::vector is created.
+
+The goal is to practise composing and consuming views, and to replace eager
+copying into an intermediate container with lazy evaluation.
 
 ---
-## An example: Custom view and adaptor
-Create a moving average algorithm. Given a range of numbers A. Produce a new range B with the moving average of the numbers in A.
-need some kind of stateful iterator, not provided by std
+## Lets write a custom view and adaptor
+Create a moving average view. Given a range of numbers A. Produce a view that represents range A as the moving average range.
+Need some kind of stateful iterator, not provided by std
 ```cpp
 int main() {
     std::vector<double> data = {1, 2, 3, 4, 5, 6};
@@ -1225,9 +1417,21 @@ int main() {
 
 ```
 ---
-ex5.cpp
+## ex5.cpp
+Lazily produce the difference between each pair of adjacent values.
+
+- Implement pairwise_difference_view: {10, 13, 12, 20} becomes {3, -1, 8}.
+- Store the previous value and advance through the source range lazily.
+- Stop at the default sentinel when no next value remains.
+- Add the std::views::all_t deduction guide.
+- Complete the adaptor closure so range | pairwise_difference works.
+- Verify that lvalues use ref_view and rvalues use owning_view.
+
+The goal is to transfer the custom view pattern from the moving-average example
+to a different stateful transformation without materializing results.
 
 ---
+## Tombestone
 C++ Ranges have a "Type-Safe Tombstone"
 ```cpp
 auto get_data() { return std::vector{1, 2, 3}; }
@@ -1250,7 +1454,6 @@ Compiler returned: 1
 ---
 ## How the tombstone is selected
 The range overload chooses its return type from the lifetime of the input.
-
 ```cpp
 struct dangling {
     constexpr dangling() noexcept = default;
@@ -1258,25 +1461,23 @@ struct dangling {
     template<class... Args>
     constexpr dangling(Args&&...) noexcept {}
 };
-
 template<std::ranges::range R>
 using borrowed_iterator_t = std::conditional_t<
     std::ranges::borrowed_range<R>,
     std::ranges::iterator_t<R>,
     dangling>;
 ```
-
-`dangling` can be constructed from the iterator result, but deliberately has
+dangling can be constructed from the iterator result, but deliberately has
 no dereference or increment operations.
 
 ---
 ## A simplified range algorithm
-The iterator overload does the work. The range overload changes what escapes.
+The iterator overload does the work.
 
 ```cpp
 template<std::ranges::input_range R, class T>
 borrowed_iterator_t<R> my_find(R&& range, const T& value) {
-    auto result = std::find(
+    auto result = std::ranges::find(
         std::ranges::begin(range),
         std::ranges::end(range),
         value);
@@ -1285,8 +1486,7 @@ borrowed_iterator_t<R> my_find(R&& range, const T& value) {
 }
 ```
 
-For an rvalue `vector`, `R` is not a borrowed range, so the return type is
-`dangling`. For `span` or `string_view`, iterators remain valid and are returned.
+For an rvalue, R is not a borrowed range, so the return type is dangling. For span or string_view, iterators remain valid and are returned.
 
 ---
 Why does std::find return dangling while views::all returns an owning_view?
@@ -1361,7 +1561,7 @@ private:
 ---
 ## std::ranges::view_interface
 Avoiding boilerplate
-.empty(), .size(), .front(), .back
+.empty(), .size(), .front(), .back()
 ```cpp
 class element_range : public std::ranges::view_interface<element_range> {
 public:
@@ -1374,7 +1574,7 @@ private:
 ```
 ---
 ## Downside: views make lifetimes less obvious
-This function returns a view containing a `ref_view` of a dead vector.
+This function returns a view containing a ref_view of a dead vector.
 
 ```cpp
 auto even_numbers_backwards() {
@@ -1394,8 +1594,8 @@ The pipeline object survives. Its underlying data does not.
 
 ---
 ## Similar syntax, different ownership
-An rvalue **container** is moved into an `owning_view`; a named container is
-represented by a `ref_view`.
+An rvalue container is moved into an owning_view; a named container is
+represented by a ref_view.
 
 ```cpp
 // Safe: the pipeline owns the temporary vector.
@@ -1410,7 +1610,7 @@ auto borrowed = numbers
 ```
 
 Do not infer ownership from the final view type being movable or returned as an
-rvalue. Ask what `views::all` did with the original source.
+rvalue. Ask what views::all did with the original source.
 
 ---
 ## Cache correctness is a library concern
@@ -1420,7 +1620,7 @@ storage.
 
 ```cpp
 auto filtered = std::vector{1, 2, 3, 4} | std::views::filter(is_even);
-(void)filtered.begin();                    // may populate a cache
+(void)filtered.begin(); // may populate a cache
 auto reversed = std::move(filtered) | std::views::reverse;
 ```
 
@@ -1429,18 +1629,115 @@ representation. Older standard libraries have had bugs in this area: test the
 actual compiler/library combination, preferably with AddressSanitizer.
 
 ---
+## When does filter_view execute?
+begin() and end() must be amortized constant time. 
+A filter cannot know its first element without testing the predicate.
+
+For a forward range such as vector, filter_view::begin() therefore:
+
+- scans only until the first match on its first call;
+- caches that iterator for later calls to `begin()`;
+- evaluates the remaining elements as the filter iterator is incremented.
+
+The filter is still lazy: calling begin() does not process the whole range.
+
+---
+```cpp
+#include <cassert>
+#include <iostream>
+#include <ranges>
+#include <vector>
+
+int main() {
+    std::vector<int> data{1, 3, 5, 8, 10};
+    int predicate_calls = 0;
+
+    auto filtered = data | std::views::filter([&](int value) {
+        ++predicate_calls;
+        return value % 2 == 0;
+    });
+
+    std::cout << "after construction: "
+              << predicate_calls << '\n';
+
+    auto first = filtered.begin();
+    std::cout << "after first begin: "
+              << predicate_calls << '\n';
+    std::cout << "first value: " << *first << '\n';
+
+    auto again = filtered.begin();
+    std::cout << "after second begin: "
+              << predicate_calls << '\n';
+    std::cout << "same position: "
+              << std::boolalpha << (first == again) << '\n';
+
+    ++first;
+    std::cout << "after increment: "
+              << predicate_calls << '\n';
+    std::cout << "next value: " << *first << '\n';
+
+    assert(predicate_calls == 5);
+}
+```
+---
+The output:
+```
+after construction: 0
+after first begin: 4
+first value: 8
+after second begin: 4
+same position: true
+after increment: 5
+next value: 10
+```
+---
+
 ## Compile-time
 - Heavy lifting is done by the type system.
-- building the pipeline is done at compile time
-- runtime; iterating over the items.
+- Building the pipeline is done at compile time
+- Runtime; iterating over the items.
 - You could get many specializations for a view (moving_average_view)
-- code size can explode
-- compile times can explode, any_view: P3411R0
+- Code size can explode
+- Compile times can explode, any_view: P3411R0
+
+---
+
+## What survives optimization?
+GCC 15.2, `-O3`: raw `if (value % 2 == 0)` loop
+
+```asm
+mov    (%rdi), %edx       # load value
+lea    (%rax,%rdx), %ecx  # candidate: sum + value
+and    $1, %edx           # filter: test odd/even
+cmove  %ecx, %eax         # accept: update sum only if even
+add    $4, %rdi           # advance to next int
+cmp    %rsi, %rdi         # reached end?
+jne    ...                # loop while values remain
+```
+
+Filtering is branchless here: `cmove` keeps the old sum for odd values.
+
+---
+
+## The filter_view loop
+
+```asm
+mov    (%rax), %edx       # load candidate
+test   $1, %dl            # filter: test odd/even
+jne    search_next        # reject odd values
+add    %edx, %edi         # consume accepted even value
+add    $4, %rax           # advance to next int
+cmp    %rax, %rsi         # reached end?
+jne    search             # continue searching
+```
+The compiler removed the adaptor objects, iterator wrappers, and function
+calls. The loop shape differs, so zero-overhead does not mean identical
+assembly; inspect or benchmark performance-critical code.
 
 ---
 
 ## C++23: zip parallel ranges
-`std::views::zip` combines corresponding elements without creating a container.
+std::views::zip combines corresponding elements without creating a container.
 It is useful when data is stored as a structure of arrays.
 
 ```cpp
@@ -1491,7 +1788,18 @@ The zip view owns no copies of these lvalue containers, so both must outlive the
 pipeline and its iterators.
 
 ---
-ex6.cpp
+## ex6.cpp
+Build a lazy summary pipeline from parallel user and verification data.
+
+- Zip `users` with `isVerified`.
+- Filter out rows whose verification value is false.
+- Transform each remaining row into the expected summary string.
+- Accept zipped rows and structured bindings as `auto&&` so the pipeline works
+    with the proxy references produced by `std::vector<bool>`.
+- Verify the number and contents of the generated summaries.
+
+The goal is to practise composing `zip`, `filter`, and `transform`, while
+handling tuple-like proxy references
 
 ---
 ## Enumerate is a specialized zip
@@ -1578,9 +1886,46 @@ Measure representative translation units with `-ftime-report` or Clang
 `-ftime-trace`; do not assume compile time is `O(N)`.
 
 ---
-ex7.cpp
-ex8.cpp
-ex9.cpp
+## ex7.cpp
+Implement a `sliding_window_view` that lazily produces overlapping subranges.
+
+- Require a const `forward_range` and `common_range` source.
+- Track the current window's beginning and end for constant-time increment.
+- Reject window sizes below one and stop when no complete window remains.
+- Expose each window as a `std::ranges::subrange`.
+- Propagate `borrowed_range` only when the underlying view is borrowed.
+- Verify both safe iterator returns and `std::ranges::dangling`.
+
+The goal is to practise iterator state, range constraints, and conditional
+borrowed-range behavior in a custom view.
+
+---
+## ex8.cpp
+Build a ranked leaderboard using a range action followed by a lazy pipeline.
+
+- Sort players by descending score using `std::ranges::sort`.
+- Use `std::ranges::greater` and the `&Player::score` projection.
+- Filter out players scoring below 1000.
+- Enumerate the remaining players to generate zero-based positions.
+- Transform each tuple-like result into the expected rank string.
+- Verify the resulting order, ranks, and values.
+
+The goal is to combine eager algorithms with `filter`, `enumerate`, and
+`transform`, while using projections and tuple-like proxy references correctly.
+
+---
+## ex9.cpp
+Implement a `trim_view` that lazily removes matching elements from both ends.
+
+- Require a bidirectional, common source range and a valid predicate.
+- Find the first non-matching element with `std::ranges::find_if_not`.
+- Walk backward to find the end without decrementing before `begin()`.
+- Add a `std::views::all_t` deduction guide.
+- Implement direct-call and pipe syntax through an adaptor closure.
+- Verify normal, empty, and all-matching ranges.
+
+The goal is to practise a bidirectional custom view, safe boundary handling,
+and a reusable range adaptor closure.
 
 ---
 <!-- _class: final-slide -->
