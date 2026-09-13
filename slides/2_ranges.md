@@ -297,7 +297,7 @@ Each category adds guarantees and operations to the one above it:
 | `LegacyRandomAccessIterator` | Constant-time jumps and distance | `std::vector` |
 | `LegacyContiguousIterator` | Elements are adjacent in memory | pointers, `std::vector` |
 
-Algorithms require the weakest category for their work. Possible overloads for stronge
+Algorithms require the weakest category for their work. Possible overloads for stronger
 categories.
 
 ---
@@ -1402,7 +1402,7 @@ The storage strategy is `ref_view`, so the vector is not copied.
 ```cpp
 int main() {
     std::vector<int> v = {1, 2, 3};
-    auto view1 = std::views::all(v); // l-value case: keep a reference to the existing vecto
+    auto view1 = std::views::all(v); // l-value case: keep a reference to the existing vector
     static_assert(std::is_same_v<decltype(view1), std::ranges::ref_view<std::vector<int>>>,
         "Expected ref_view for lvalue"
     );
@@ -1464,7 +1464,7 @@ constexpr ranges::borrowed_iterator_t<R>
     sort(R&& r, Comp comp = {}, Proj proj = {});
 ```
 
-`random_access_range` checks traversal capability. `sortable` checks whethe
+`random_access_range` checks traversal capability. `sortable` checks whether
 the projected elements can be reordered using the comparator.
 
 ---
@@ -1549,7 +1549,7 @@ pipeline.
 - Consume the resulting view with std::accumulate.
 - Verify that no intermediate std::vector is created.
 
-The goal is to practise composing and consuming views, and to replace eage
+The goal is to practise composing and consuming views, and to replace eager
 copying into an intermediate container with lazy evaluation.
 
 ---
@@ -2216,7 +2216,7 @@ That shape can cause roughly:
 `N + N + ... + N = O(N²)`
 
 ---
-## Runtime and compile time diffe
+## Runtime and compile time differ
 For a zip of `N` ranges:
 
 | Operation | Typical runtime work |
