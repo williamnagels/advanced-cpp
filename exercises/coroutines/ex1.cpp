@@ -1,58 +1,55 @@
-#include <coroutine>
-#include <string>
-#include <ranges>
 #include <algorithm>
 #include <cassert>
+#include <generator>
+#include <iterator>
+#include <string_view>
+#include <vector>
 
-namespace {
-struct Messenger {
-    struct promise_type {
-        std::string value;
-        /*
-        TODO: Implement:
-            - get_return_object
-            - initial_suspend
-            - final_suspend
-            - unhandled_exception
-            - return_void
-            - yield_value
+namespace
+{
+/*
+GOAL:
+Use std::generator before looking at coroutine implementation details. Produce a
+lazy sequence of deployment stages and consume it as an ordinary input range.
 
-        */
-    };
-    struct iterator {
-        using value_type = std::string;
-        using difference_type = std::ptrdiff_t;
-        std::coroutine_handle<promise_type> h;
-        /*
-        TODO: Implement:
-            - operator++ (both prefix and postfix)
-            - operator*
-            - operator== (to compare with std::default_sentinel_t)
-        */
-    };
+1. Replace the placeholder body in deployment_stages with co_yield expressions
+   for "configure", "build", "test", and "deploy".
+2. Yield "test" only when run_tests is true.
+3. Use std::ranges::copy and std::back_inserter to collect the generated stages.
+4. Enable the assertions for deployments with and without tests.
 
-    std::coroutine_handle<promise_type> handle;
-    iterator begin() { if (handle) handle.resume(); return {handle}; }
-    std::default_sentinel_t end() { return {}; }
-    
-    ~Messenger() { if (handle) handle.destroy(); }
-};
+Observe that calling deployment_stages only creates a lazy generator. Its body
+runs as the ranges algorithm requests each value.
+*/
+std::generator<std::string_view> deployment_stages(bool run_tests)
+{
+    (void)run_tests;
+    co_return;
+
+    // TODO: Replace the placeholder above with the deployment stages.
 }
 
-void coroutines_ex1() {
-    auto producer = []() -> Messenger {
-        /*
-        TODO: uncomment these once Messenger::promise_type is implementedd
-        co_yield "Hello";
-        co_yield "Ranges";
-        co_yield "World";
-        */
-    };
+void test_1()
+{
+    auto with_tests_stream = deployment_stages(true);
+    auto without_tests_stream = deployment_stages(false);
+    std::vector<std::string_view> with_tests;
+    std::vector<std::string_view> without_tests;
 
-    auto stream = producer();
-    /*TODO: Select a ranges alogorithm and use the coroutine to create the string
-    "Hello Ranges World"
-    std::string result = <ranges algorithm> 
+    // TODO: Copy with_tests_stream into with_tests.
+    // TODO: Copy without_tests_stream into without_tests.
+    (void)with_tests_stream;
+    (void)without_tests_stream;
 
-    assert(result == "Hello Ranges World");*/
+    // Uncomment once the exercise has been implemented.
+    // assert((with_tests == std::vector<std::string_view>{
+    //     "configure", "build", "test", "deploy"}));
+    // assert((without_tests == std::vector<std::string_view>{
+    //     "configure", "build", "deploy"}));
+}
+}
+
+void coroutines_ex1()
+{
+    test_1();
 }

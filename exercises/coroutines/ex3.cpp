@@ -1,45 +1,52 @@
 #include <coroutine>
+#include <iostream>
 #include <cassert>
-#include <exception>
 
 namespace {
-
+/*
+Task is OK no changes needed here
+*/
 struct Task {
     struct promise_type {
-        Task get_return_object() { return {std::coroutine_handle<promise_type>::from_promise(*this)}; }
+        Task get_return_object() { return {}; }
         std::suspend_never initial_suspend() { return {}; }
         std::suspend_never final_suspend() noexcept { return {}; }
         void return_void() {}
         void unhandled_exception() { std::terminate(); }
     };
-    std::coroutine_handle<promise_type> handle;
 };
-struct Switchboard {
-    int input_val;
 
-    // TODO: Implement await_ready (return false to suspend)
-    // TODO: Implement await_suspend (resume the handle immediately)
-    // TODO: Implement await_resume (return input_val * 2)
+struct Signal {
+    std::coroutine_handle<> waiter{};
+
+    // TODO: Implement the 3 Awaiter methods:
+    // 1. await_ready
+    // 2. await_suspend (capture the handle)
+    // 3. await_resume
+    
+    void fire() {
+        if (waiter) waiter.resume();
+    }
 };
 }
-
 /*
 GOAL:
-Understand that co_await is an expression that returns a value.
-The value returned by await_resume() is what the coroutine receives.
-Awaiters are typically used to break out of code where you dont have access to the handle
-(body of math_coro) to a place of code where the handle is know.
-
+Understand how co_await pauses execution and how resuming the handle 
+from the OUTSIDE continues it. Using the signal as somekind of barrier
+latch type of synchronization primitive in the coroutine
 */
 void coroutines_ex3() {
-    int final_result = 0;
+    Signal sig;
+    bool completed = false;
 
-    auto math_coro = [&](int start) -> Task {
-        // TODO uncomment once switchboard is an awaitable
-        // int doubled = co_await Switchboard{start}; 
-        //final_result = doubled;
+    auto my_coro = [&](Signal& s) -> Task {
+        //co_await s; // TODO: uncomment once Signal is an awaitable
+        completed = true;
     };
 
-    math_coro(10);
-    // assert(final_result == 20);
+    my_coro(sig);
+    assert(!completed); // Still waiting...
+    
+    sig.fire(); 
+    assert(completed); // Now it's done!
 }

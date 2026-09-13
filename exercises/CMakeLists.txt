@@ -33,7 +33,8 @@ set(COROUTINES_SOURCES
 	coroutines/ex2.cpp
 	coroutines/ex3.cpp
 	coroutines/ex4.cpp
-	coroutines/ex5.cpp)
+	coroutines/ex5.cpp
+	coroutines/ex6.cpp)
 	
 add_executable(coroutines ${COROUTINES_SOURCES})
 target_compile_options(coroutines PRIVATE -Wall -Wextra -Wpedantic)
