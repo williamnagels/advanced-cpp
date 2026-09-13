@@ -27,6 +27,11 @@ theme: slide-theme
 There is a CMake project in exercises/ . Build that.
 The project will generate a couple of binaries. Run the binary for the exercise you are working on
 ---
+# Building the slides
+- The slide decks must be generated from the Markdown sources
+- Follow the instructions in `slides/README.md`
+- Generated PDFs are written to `slides/pdf/`
+---
 # Interrupt handling
 - SIGINT whenever
 - Dont be too confused for too long
