@@ -4,36 +4,61 @@ theme: slide-theme
 ---
 <!-- _class: first-slide -->
 ---
-# C++ advanced Training
-## Topics and planning
+# Advanced C++ Training
+## Ranges and coroutines
 <!-- _class: second-slide -->
 ---
 # William Nagels
 - SW engineer at Sioux
--  Stay up-to-date with recent developments in C++
-- C++23 environment
+- Working with modern C++ and its evolving standard library
 ---
 
+## Why these topics?
+- **Ranges** express data-processing pipelines through composable operations
+- **Coroutines** express resumable control flow without splitting it across callbacks
+- Both move bookkeeping from application code into reusable abstractions
+- Understanding their machinery helps you choose them deliberately
+---
+## Learning goals
+By the end of the training, you should be able to:
+
+- Build lazy pipelines with views and ranges algorithms
+- Reason about range lifetime, iterator categories, and performance
+- Explain coroutine frames, promises, suspension, and resumption
+- Implement and consume generators and awaitables
+---
+## Prerequisites
+- Comfortable with modern C++, including templates, lambdas, and RAII
+- Basic familiarity with iterators and the standard library
+- Able to configure and build a small CMake project
+---
 ## Planning
 - Day 1
   - Ranges
 - Day 2
   - Coroutines
-  - (opt) Modules
 ---
-# Excercises
+## Course format
+- Short theory blocks followed by focused exercises
+- Examples expose implementation details before moving to library abstractions
+- Exercise sources contain instructions, TODOs, and assertions
+- Compiler warnings may be intentional in unfinished exercises
+---
+# Exercises
 - Slides and exercises: https://github.com/williamnagels/advanced-cpp
-- How to build and solve exercises: exercises/README.md
-There is a CMake project in exercises/ . Build that.
-The project will generate a couple of binaries. Run the binary for the exercise you are working on
+- Build instructions: `exercises/README.md`
+- Configure and build the CMake project in `exercises/`
+- Run the binary for the topic you are working on
+- Completed examples are available in each topic's `solutions/` directory
 ---
 # Building the slides
-- The slide decks must be generated from the Markdown sources (can download from github)
-- Follow the instructions in `slides/README.md`
-- Generated PDFs are written to `slides/pdf/`
+- Generate PDFs locally by following `slides/README.md`
+- Local PDFs are written to `slides/pdf/`
+- Prebuilt PDFs are available from completed GitHub Actions runs
+- Download the `advanced-cpp-slides` artifact from the run's **Artifacts** section
 ---
 # Interrupt handling
-- SIGINT whenever
-- Dont be too confused for too long
+- Send `SIGINT` whenever you have a question
+- Do not stay confused for too long
 ---
 <!-- _class: final-slide -->
