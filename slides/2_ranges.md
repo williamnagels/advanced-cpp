@@ -95,7 +95,7 @@ for (auto it = text; it != text + std::strlen(text); ++it) {
     ...
 }
 ```
-Upside: You could roll your own iterato
+Upside: You could roll your own iterator
 Downside: Complexity
 
 ---
@@ -188,7 +188,7 @@ auto other = std::find(lst.begin(), lst.end(), 30);
 by returning the supplied end iterator.
 
 ---
-## Algorithms that write need an output iterato
+## Algorithms that write need an output iterator
 `std::copy_if` reads one iterator pair and writes matching elements through a
 third iterator.
 
@@ -330,7 +330,7 @@ that tells algorithms which operations the iterator supports, enabling compile-t
 ---
 Deprecated since C++17:
 ```cpp
-class Iterato
+class Iterator
 ```
 Base class that provides the 5 core traits.
 There are layers of legacy
@@ -719,8 +719,8 @@ This contract is checked by the compiler!
 
 ---
 
-## Associated types of a modern iterato
-C++20 concepts inspect expressions and associated types. A readable iterato
+## Associated types of a modern iterator
+C++20 concepts inspect expressions and associated types. A readable iterator
 normally declares the types that cannot be inferred reliably:
 
 ```cpp
@@ -750,7 +750,7 @@ auto distance = last - first; // may span the complete addressable range
 std::ranges::advance(it, -3); // negative for bidirectional iterators
 ```
 A custom iterator may instead use
-another signed integer type when its domain is smaller or larger than pointe
+another signed integer type when its domain is smaller or larger than pointer
 distance. `std::iter_difference_t<I>` exposes the selected type to algorithms.
 
 ---
@@ -903,7 +903,7 @@ auto count = std::ranges::size(range);
 ```
 
 The caller always uses the qualified `std::ranges` interface.
-The customization logic remains in tha tnamespace does NOT leak into the caller's
+The customization logic remains in that namespace does NOT leak into the caller's
 overload set.
 
 ---
@@ -1217,7 +1217,7 @@ The vector still owns the elements.
 One key feature of views is composability:
 - range → transform → filter → slice → consume
 - Do not copy the underlying data
-- The view is copied, not the containe
+- The view is copied, not the container
 
 ```cpp
 std::vector<int> v{1, 2, 3, 4, 5, 6};
@@ -1358,8 +1358,7 @@ optimization (EBO).
 
 ---
 This spelling is practical because of Class Template Argument Deduction (CTAD,
-C++17). In interfaces, avoid naming the complete type: use `auto` return type o
-constrain the result as a range.
+C++17). In interfaces, avoid naming the complete type: use `auto` return type.
 ```cpp
 template< ranges::input_range V,
           std::indirect_unary_predicate<ranges::iterator_t<V>> Pred >
@@ -1554,7 +1553,7 @@ The goal is to practise composing and consuming views, and to replace eage
 copying into an intermediate container with lazy evaluation.
 
 ---
-## Custom view and adapte
+## Custom view and adapter
 Create a moving average view. Given a range of numbers A. Produce a view that represents range A as the moving average range.
 
 ```cpp
@@ -1612,7 +1611,7 @@ struct iterator {
     using value_type = T;
     using difference_type = std::ptrdiff_t;
     using iterator_category = std::input_iterator_tag;
-    std::ranges::iterator_t<V> it_;      // current source iterato
+    std::ranges::iterator_t<V> it_;      // current source iterator
     std::ranges::sentinel_t<V> end_;     // source range end
     std::deque<T> buf_;
     std::size_t window_;
@@ -1625,7 +1624,7 @@ struct iterator {
         // produce a moving average from buf_
     }
     iterator& operator++() {
-        ++it_;               // advance the source iterato
+        ++it_; // advance the source iterator
         // update buf_ with the latest value
         return *this;
     }
@@ -1640,7 +1639,7 @@ struct iterator {
 
 ---
 The key idea is really simple:
-- `it_` is the source iterato
+- `it_` is the source iterator
 - `end_` is the source sentinel
 - the view's `end()` is the default sentinel of the view
 - the relation `it_ == end_` decides when the custom iterator has exhausted the source range
@@ -2192,7 +2191,7 @@ For `zip_view<Views...>`, the library must compute and validate:
 - a tuple-like proxy reference from every dereference;
 - an end condition that stops when **any** input reaches its sentinel.
 
-Keep wide pipelines behind an `auto`-returning function, avoid repeating thei
+Keep wide pipelines behind an `auto`-returning function, avoid repeating their
 types in interfaces, and split a very wide zip when compile time becomes a
 measured problem.
 
