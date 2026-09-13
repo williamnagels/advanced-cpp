@@ -34,3 +34,18 @@ docker run --rm \
 
 The second argument is the output directory. The generated filename is based
 on the Markdown filename, so this command creates `slides/pdf/2_ranges.pdf`.
+
+## Download generated PDFs
+
+The GitHub Actions workflow publishes these decks as the
+`advanced-cpp-slides` artifact:
+
+- `1_intro.pdf`
+- `2_ranges.pdf`
+- `3_coroutines.pdf`
+
+Open the repository on GitHub, select **Actions**, open a completed
+**Docker build** workflow run, and download **advanced-cpp-slides** from the
+**Artifacts** section. GitHub downloads a ZIP containing the three PDFs.
+
+Artifacts are retained for 30 days after each workflow run.

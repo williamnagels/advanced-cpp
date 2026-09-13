@@ -28,7 +28,7 @@ There is a CMake project in exercises/ . Build that.
 The project will generate a couple of binaries. Run the binary for the exercise you are working on
 ---
 # Building the slides
-- The slide decks must be generated from the Markdown sources
+- The slide decks must be generated from the Markdown sources (can download from github)
 - Follow the instructions in `slides/README.md`
 - Generated PDFs are written to `slides/pdf/`
 ---
