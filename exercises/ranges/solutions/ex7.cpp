@@ -55,8 +55,8 @@ public:
         }
 
         iterator& operator++() {
-            current_ = batchEnd_;
-            find_batch_end();
+            current_ = batchEnd_; // start is now at the beginning of the next batch
+            find_batch_end(); // look for new batch end
             return *this;
         }
 

@@ -23,6 +23,7 @@ public:
         : base_(std::move(base)), predicate_(std::move(predicate)) {}
 
     auto begin() {
+        // William: Is this compliant?
         return std::ranges::find_if_not(base_, std::ref(predicate_));
     }
 
