@@ -40,3 +40,28 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             trainingcontainer /bin/sh -c "cd /workspace/exercises && mkdir -p build && cd build && cmake .. && make"
+
+      - name: Generate slide PDFs
+        run: |
+          mkdir -p slides/artifacts
+          for deck in 1_intro.md 2_ranges.md 3_coroutines.md; do
+            docker run --rm \
+              --user "$(id -u):$(id -g)" \
+              --env HOME=/tmp \
+              --env TMPDIR=/tmp \
+              --mount type=bind,source="$PWD/slides",target=/slides \
+              --workdir /slides \
+              trainingcontainer \
+              ./generate.sh "$deck" artifacts
+          done
+
+      - name: Publish slide PDFs
+        uses: actions/upload-artifact@v4
+        with:
+          name: advanced-cpp-slides
+          path: |
+            slides/artifacts/1_intro.pdf
+            slides/artifacts/2_ranges.pdf
+            slides/artifacts/3_coroutines.pdf
+          if-no-files-found: error
+          retention-days: 30
