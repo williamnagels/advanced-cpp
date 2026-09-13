@@ -107,6 +107,13 @@ inline constexpr bool enable_borrowed_range<::budget_batches_view<V>> =
     enable_borrowed_range<V>;
 }
 
+/*
+INSTRUCTOR NOTE:
+Borrowed-ness follows the wrapped view. A span-backed temporary view can return
+usable iterators, but an owning_view temporary cannot. Compare the two
+static_asserts below and ask what object actually owns the elements.
+*/
+
 namespace
 {
 void test_budget_batches()

@@ -11,7 +11,14 @@ enum class Channel { R = 0, G = 1, B = 2 };
 
 class ChannelIterator {
 public:
+
     // Legacy algorithms discover an iterator's capabilities through these traits.
+    /*
+        - Why input_iterator?
+        input_iterator is the minimum category required by std::accumulate.
+        This implementation may support stronger multi-pass behavior, but the
+        exercise deliberately exposes only the contract needed by the algorithm.
+    */
     using iterator_category = std::input_iterator_tag;
     using value_type = std::uint8_t;
     using difference_type = std::ptrdiff_t;
@@ -30,6 +37,8 @@ public:
             return *this;
         }
 
+        // The iterator owns traversal policy, while the algorithm
+        // remains unaware that the bytes are stored in interleaved chunks.
         ++m_ptr;
         ++m_pos_in_chunk;
         if (m_pos_in_chunk == 4) {

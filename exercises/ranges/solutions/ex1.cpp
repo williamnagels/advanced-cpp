@@ -22,6 +22,11 @@ void test_1()
         {5, 10.0,  "Completed"}
     };
     double rawSum = 0;
+
+        /*
+        - Start with the loop: it combines selection and aggregation in one place.
+            Is that clearer here, or does separating the operations improve intent?
+        */
     for (const auto& order : orders) {
         if (order.status == "Completed") {
             rawSum += order.totalPrice;
@@ -31,6 +36,10 @@ void test_1()
     std::vector<Order> completedOrders;
 
     // back_inserter lets copy_if grow the destination without pre-sizing it.
+    /*
+        - copy_if materializes completedOrders. This is useful when the selected
+            orders are reused, but wasteful when only the sum is needed.
+    */
     std::copy_if(orders.begin(), orders.end(),
                  std::back_inserter(completedOrders),
                  [](const Order& order) {
@@ -38,6 +47,18 @@ void test_1()
                  });
 
     // The accumulator carries the running price while each Order is visited.
+    /*
+        - accumulate combines selection and aggregation in one pass, avoiding
+            the need for an intermediate container.
+
+        double sum = std::accumulate(
+            orders.begin(), orders.end(), 0.0,
+            [](double total, const Order& order) {
+                return order.status == "Completed"
+                    ? total + order.totalPrice
+                    : total;
+            });
+    */
     double stlSum = std::accumulate(
         completedOrders.begin(), completedOrders.end(), 0.0,
         [](double sum, const Order& order) {

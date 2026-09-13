@@ -6,6 +6,19 @@
 #include <type_traits>
 #include <utility>
 
+/*
+    - Alternative: compose drop_while with reverse/drop_while/reverse:
+
+            auto trim(R&& range, Pred predicate) {
+                auto without_front = std::forward<R>(range)
+                    | std::views::drop_while(std::ref(predicate));
+
+                return without_front
+                    | std::views::reverse
+                    | std::views::drop_while(std::ref(predicate))
+                    | std::views::reverse;
+            }
+*/
 namespace
 {
 template<std::ranges::view V, typename Pred>
@@ -23,7 +36,6 @@ public:
         : base_(std::move(base)), predicate_(std::move(predicate)) {}
 
     auto begin() {
-        // William: Is this compliant?
         return std::ranges::find_if_not(base_, std::ref(predicate_));
     }
 
@@ -50,7 +62,7 @@ trim_view(R&&, Pred) -> trim_view<std::views::all_t<R>, Pred>;
 
 template<typename Pred>
 struct trim_closure : std::ranges::range_adaptor_closure<trim_closure<Pred>> {
-    [[no_unique_address]] Pred predicate_;
+    [[no_unique_address]] Pred predicate_; //EBO ?
 
     explicit trim_closure(Pred predicate) : predicate_(std::move(predicate)) {}
 
@@ -61,6 +73,10 @@ struct trim_closure : std::ranges::range_adaptor_closure<trim_closure<Pred>> {
 };
 
 struct trim_fn {
+    /*
+    The two overloads support both trim(range, predicate) and
+    range | trim(predicate).
+    */
     template<std::ranges::viewable_range R, typename Pred>
     auto operator()(R&& range, Pred predicate) const {
         return trim_view(std::views::all(std::forward<R>(range)),

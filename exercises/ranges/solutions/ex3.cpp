@@ -15,6 +15,11 @@ struct TlvPacket {
 
 class TlvIterator {
 public:
+    /*
+
+    - Declaring forward_iterator promises multi-pass behavior: copying an
+        iterator and advancing one copy does not invalidate the other.
+    */
     // These aliases opt into multi-pass forward-iterator semantics.
     using iterator_concept = std::forward_iterator_tag;
     using value_type = TlvPacket;
@@ -23,6 +28,10 @@ public:
     TlvIterator() = default;
     explicit TlvIterator(const std::uint8_t* ptr) : m_ptr(ptr) {}
 
+    /*
+    - Dereference returns a packet descriptor by value. Its payload pointer is
+    still non-owning and remains valid only while the buffer is alive.
+    */
     TlvPacket operator*() const {
         return {m_ptr[0], m_ptr[1], m_ptr + 2};
     }
@@ -68,6 +77,10 @@ void test_3()
     int totalPayloadBytes = 0;
     int typeChecksum = 0;
 
+    /*
+        - What should production parsing do with a truncated header or a length
+        beyond the buffer? This iterator trusts validated input;
+    */
     std::ranges::subrange packets{begin, end};
     for (TlvPacket packet : packets) {
         ++packetCount;

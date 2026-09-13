@@ -21,8 +21,12 @@ void test_1()
         {4, 50.0,  "Cancelled"},
         {5, 10.0,  "Completed"}
     };
-
     // Views filter and project lazily; no intermediate Order vector is built.
+
+    /*
+        - filter and transform are lazy: constructing completedPrices does not
+          inspect orders. Work happens when accumulate or distance traverses it.
+    */
     auto completedPrices = orders
         | std::views::filter([](const Order& order) {
               return order.status == "Completed";
@@ -31,6 +35,14 @@ void test_1()
               return order.totalPrice;
           });
 
+    /*
+        - This test traverses the pipeline twice. Ask when repeated lazy work is
+          cheaper than materializing results once.
+    */
+    /* The view refers to orders, so orders must outlive completedPrices.
+        - C++23 alternative: std::ranges::fold_left(completedPrices, 0.0,
+            std::plus{}), where library support is available.
+    */
     double rangesSum = std::accumulate(completedPrices.begin(),
                                        completedPrices.end(), 0.0);
 

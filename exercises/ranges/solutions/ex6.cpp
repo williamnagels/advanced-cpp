@@ -15,6 +15,21 @@ void test_1()
         for (int byte = 0; byte < 4; ++byte) image.push_back(30 + block);
     }
 
+        /*
+
+        Pseudocode using block indices:
+        
+        block_count = image.size() / bytes_per_rgb_block
+        rgb_blocks = indices(0, block_count)
+            | transform(index -> {
+                offset = index * bytes_per_rgb_block
+                return {
+                    image[offset + 0 .. offset + 4],
+                    image[offset + 4 .. offset + 8],
+                    image[offset + 8 .. offset + 12]
+                }
+            })
+        */
     // Every element of channelChunks is one four-byte channel view.
     auto channelChunks = image | std::views::chunk(4);
 

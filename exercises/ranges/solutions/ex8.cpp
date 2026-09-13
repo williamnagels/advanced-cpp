@@ -22,9 +22,16 @@ void test_1()
         {"Akira", 3200}
     };
 
-    // The projection makes greater compare scores instead of Player objects.
-    std::ranges::sort(leaderboard, std::greater{}, &Player::score);
 
+    // The projection makes greater compare scores instead of Player objects.
+    // partial_sort or top-N selection can avoid sorting the entire
+    // input when only a small number of leaders is required.
+    std::ranges::sort(leaderboard, std::greater{}, &Player::score);
+    // The enumerate runs after filter, so ranks are contiguous among qualifying
+    // players. Moving enumerate before filter would preserve original indexes.
+    //
+    // - transform creates strings lazily on every dereference. Materialize them
+    //   if they will be traversed repeatedly or must outlive leaderboard.
     auto rankedList = leaderboard
         | std::views::filter([](const Player& player) {
               return player.score >= 1000;
