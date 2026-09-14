@@ -8,9 +8,8 @@ theme: slide-theme
 <!-- _class: second-slide -->
 ---
 # Ranges
-- Why do we need ranges?
-    - STL algorithms
-    - Legacy Iterators vs C++20 iterators
+- Problems with legacy iterators and STL algorithms
+- C++20 iterators
 - What is the definition of a range?
 - Views and adaptors
 - Sentinels
@@ -37,6 +36,11 @@ The compiler and its standard library must both implement each facility.
 implementations. Use the course Docker image when the host library is older.
 
 ---
+# Problems with legacy iterators and algorithms
+
+Providing some historical context for ranges
+
+---
 # A trip down memory lane
 
 Before introducing ranges, we will revisit the interfaces they evolved from:
@@ -47,27 +51,22 @@ Before introducing ranges, we will revisit the interfaces they evolved from:
 This gives us the context for the design choices made by C++20 ranges.
 
 ---
-# Problems with legacy iterators
-
-Why was a new model needed?
-
----
 ## Problem: Iterator Invalidation
 There are no built-in safety checks or sentinels to prevent iterator use after invalidation
 ```cpp
 std::vector<int> v{1, 2, 3};
 auto it = v.begin();
 v.push_back(4);   // may reallocate, invalidates iterators
-int x = *it;      // undefined behaviou
+int x = *it;      // undefined behaviour
 ```
 
 ---
 Different containers have different invalidation rules.
-A code change my invalidate an assumption
+A code change may invalidate an assumption
 | Container     | push_back invalidates? |
 | ------------- | ---------------------- |
 | `std::vector` | Possibly               |
-| `std::list`   | Never                  |
+| `std::list`   | No                  |
 
 ---
 ## Problem: Iterator mismatch
@@ -99,8 +98,37 @@ Upside: You could roll your own iterator
 Downside: Complexity
 
 ---
+## Problem: Handeling failure
+
+If std::find fails to find anything, you must manually compare with end().
+
+- Dereferencing the end() iterator is UB.
+- Compiler does not help you here.
+
+```cpp
+auto it = std::find(v.begin(), v.end(), 99);
+int x = *it;   // BUG if element not found
+```
+
+---
+## STL Algorithms use these problematics iterator pairs
+[Algorithms](https://en.cppreference.com/cpp/algorithm) are decoupled from containers. The same algorithm works with any
+iterator type that provides the operations it requires.
+
+```cpp
+std::vector<int> vec = {10, 20, 30, 40};
+auto it = std::find(vec.begin(), vec.end(), 30);
+
+std::list<int> lst = {10, 20, 30, 40};
+auto other = std::find(lst.begin(), lst.end(), 30);
+```
+
+`std::find` takes an input iterator pair and returns an iterator. Failure is represented
+by returning the supplied end iterator.
+
+---
 ## Problem: Composability
-Iterators do not compose well.
+Algorithms do not compose well.
 You typically end up writing loops instead of 'chaining' operations.
 ```cpp
 std::vector<int> result;
@@ -130,64 +158,6 @@ Upside: Readability
 Downside: CPU usage, Memory usage
 
 ---
-## Problem: Eager vs lazy
-Standard algorithms execute immediately. When chained through intermediate
-containers, each stage must finish before the next begins.
-
-**Eager can be good:**
-- Predictable execution and side effects;
-- The result is stored and can be reused;
-
-**Eager materialization can be bad:**
-- Intermediate containers cost memory and allocation;
-- Later stages cannot stop earlier stages early;
-- Unsuitable for unbounded streams or data larger than memory.
-
----
-```cpp
-std::vector<int> intermediate;
-std::copy_if(v.begin(), v.end(), std::back_inserter(intermediate), 
-             [](int x) { return x % 2 == 0; });
-
-std::vector<int> result;
-std::transform(intermediate.begin(), intermediate.end(), std::back_inserter(result), 
-               [](int x) { return x * 10; });
-```
-What if only the first transformed match is needed? 
--> `std::copy_if` already scanned the entire input
--> Stored every match before `std::transform` begins.
-
----
-## Problem: Handeling failure
-
-If std::find fails to find anything, you must manually compare with end().
-
-- Dereferencing the end() iterator is UB.
-- Compiler does not help you here.
-
-```cpp
-auto it = std::find(v.begin(), v.end(), 99);
-int x = *it;   // BUG if element not found
-```
-
----
-
-## STL Algorithms use these problematics iterator pairs
-[Algorithms](https://en.cppreference.com/cpp/algorithm) are decoupled from containers. The same algorithm works with any
-iterator type that provides the operations it requires.
-
-```cpp
-std::vector<int> vec = {10, 20, 30, 40};
-auto it = std::find(vec.begin(), vec.end(), 30);
-
-std::list<int> lst = {10, 20, 30, 40};
-auto other = std::find(lst.begin(), lst.end(), 30);
-```
-
-`std::find` takes an input iterator pair and returns an iterator. Failure is represented
-by returning the supplied end iterator.
-
----
 ## Algorithms that write need an output iterator
 `std::copy_if` reads one iterator pair and writes matching elements through a
 third iterator.
@@ -206,22 +176,34 @@ std::copy_if(orders.begin(), orders.end(),
 The algorithm does not know which container receives the output.
 
 ---
-## Algorithms that reduce produce one value
-`std::accumulate` combines an iterator pair into a single value.
+## Problem: Eager vs lazy
+Standard algorithms execute immediately. When chained through intermediate
+containers, each stage must finish before the next begins.
 
-```cpp
-double total = std::accumulate(
-    completedOrders.begin(), completedOrders.end(), 0.0,
-    [](double sum, const Order& order) {
-        return sum + order.totalPrice;
-    });
-```
+**Eager can be good:**
+- Predictable execution and side effects
+- The result is stored and can be reused
 
-- `0.0` is the initial value and determines the result type.
-- The lambda combines the running total with the next element.
+**Eager materialization can be bad:**
+- Intermediate containers cost memory and allocation
+- Later stages cannot stop earlier stages early
+- Unsuitable for unbounded streams or data larger than memory.
 
 ---
+```cpp
+std::vector<int> intermediate;
+std::copy_if(v.begin(), v.end(), std::back_inserter(intermediate), 
+             [](int x) { return x % 2 == 0; });
 
+std::vector<int> result;
+std::transform(intermediate.begin(), intermediate.end(), std::back_inserter(result), 
+               [](int x) { return x * 10; });
+```
+What if after consuming the transformed results we realize that only the first match was needed?
+-> `std::copy_if` already scanned the entire input
+-> Stored every match before `std::transform` begins.
+
+---
 ## ex1.cpp
 Historical context. Replace one raw loop with `std::copy_if` and `std::accumulate`.
 
@@ -552,9 +534,9 @@ Onwards to concept-checked iterators, ranges, views, adaptors, and range algorit
 - **Sentinel concept:** the end condition can havea different type from the iterator.
 - **Range objects:** package a traversal source instead of passing two
     independent iterators.
-- **Views:** store lazy transformations as lightweight range objects.
-- **Adaptor closures and `operator|`:** compose views into readable pipelines.
-- **Perfect forwarding and CTAD:** infer the complex wrapper types.
+    - **Views:** store lazy transformations as lightweight range objects.
+    - **Adaptor closures and `operator|`:** compose views into readable pipelines.
+    - **Perfect forwarding and CTAD:** infer the complex wrapper types.
 ---
 ## C++20 Iterators
 C++20: Enter concepts and type constraining.
@@ -573,6 +555,7 @@ concept input_iterator =
     std::indirectly_readable<I> &&  /* *it, repeated *it*/         
     std::derived_from<ITER_CONCEPT<I>, std::input_iterator_tag>;
 ```
+
 ---
 ## Forward iterators
 Multi-pass forward iteration. Safe to copy the iterator and iterate over the same range multiple times without consuming it.
@@ -652,6 +635,7 @@ template< class I >
         };
 ```
 - C-API Interoperability; memcpy
+
 ---
 ## std::to_address
 
@@ -691,7 +675,7 @@ input_or_output_iterato
     `output_iterator` with `incrementable` and `sentinel_for`.
 
 ---
-By explicitly specifying using iterator_concept = std::forward_iterator_tag;, the author of forward_list is telling the compiler:
+By explicitly specifying `using iterator_concept = std::forward_iterator_tag;`, the author of forward_list is telling the compiler:
 
 ```
 Even though my syntax looks like a basic incrementable type, 
@@ -1061,6 +1045,20 @@ struct element_iterator {
     std::optional<Element> read_next(); };
 ```
 `default_sentinel` carries no state; comparison asks the iterator whether the source has been exhausted.
+
+---
+## subrange
+```cpp
+namespace std::ranges {
+template<
+    std::input_or_output_iterator I,
+    std::sentinel_for<I> S,
+    subrange_kind K = /* sized or unsized */
+>
+requires /* additional constraints */
+class subrange;
+}
+```
 
 ---
 ## `subrange` turns iterator boundaries into a range
