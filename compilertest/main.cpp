@@ -3,6 +3,7 @@
 #include <ranges>     // Ranges support
 #include <coroutine>  // Coroutine support
 #include <expected>   // C++23 specific feature
+#include <generator>  // C++23 generator support
 
 // A simple C++23 test: using std::expected (New in C++23)
 std::expected<int, std::string> check_cpp23_support(bool success) {
