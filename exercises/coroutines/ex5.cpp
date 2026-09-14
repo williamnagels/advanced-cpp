@@ -1,116 +1,123 @@
-#include <coroutine>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <memory>
 #include <cassert>
+#include <coroutine>
+#include <cstddef>
+#include <deque>
+#include <exception>
+#include <utility>
+#include <vector>
 
-namespace {
-
-// The shared state managed by tasks and the WhenAll awaiter
-// AndLatch code is OK, doesnt need changes
-struct AndLatch 
+namespace
 {
-    std::size_t counter;
-    std::coroutine_handle<> parent;
-
-    AndLatch(std::size_t n, std::coroutine_handle<> p) 
-        : counter(n), parent(p) {}
-    
-    ~AndLatch() { std::cout << "  [Debug] Latch destroyed\n"; }
-};
-
+// Task owns its coroutine frame. No changes are needed here.
 struct Task {
+    struct promise_type;
+    using handle_type = std::coroutine_handle<promise_type>;
+
     struct promise_type {
-        // TODO: Each task holds a managed ptr to the synchronization logic
-        // Add this here.
-
-        Task get_return_object() { 
-            return {std::coroutine_handle<promise_type>::from_promise(*this)}; 
+        Task get_return_object() noexcept {
+            return Task{handle_type::from_promise(*this)};
         }
-        std::suspend_always initial_suspend() { return {}; }
-        
-        struct FinalAwaiter {
-            /*
-            Implement final awaiter here.
-            Look up the shared state from the promise, decrement the counter, and if it hits zero, resume the parent.
-            */
-            bool await_ready() noexcept { return false; }
-            std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept {
-                return std::noop_coroutine();
-            }
-            void await_resume() noexcept {}
-        };
-
-        // When a task is completed, the final awaiter
-        // is constructed.
-        FinalAwaiter final_suspend() noexcept { return {}; }
-        void return_void() {}
+        std::suspend_never initial_suspend() const noexcept { return {}; }
+        std::suspend_always final_suspend() const noexcept { return {}; }
+        void return_void() const noexcept {}
         void unhandled_exception() { std::terminate(); }
     };
 
-    std::coroutine_handle<promise_type> handle;
-    Task(std::coroutine_handle<promise_type> h) : handle(h) {}
+    handle_type handle{};
 
-    ~Task() { if (handle) handle.destroy(); }
-    Task(const Task&) = delete;
-    Task(Task&& other) noexcept : handle(other.handle) { other.handle = nullptr; }
-};
-
-struct WhenAll {
-    Task& t1;
-    Task& t2;
-
-    bool await_ready() noexcept { return false; }
-
-    void await_suspend(std::coroutine_handle<> parent_handle) {
-        // Initialize the shared state with a count of 2 OR
-        // use the managed ptr to track when the continuation should be ran
-        // remember, parent_handle is the continuation. it is running
-        // this function to ask when im being suspended (right now) what
-        // should I do?
+    explicit Task(handle_type coroutine) noexcept : handle(coroutine) {}
+    Task(Task const&) = delete;
+    Task& operator=(Task const&) = delete;
+    Task(Task&& other) noexcept
+        : handle(std::exchange(other.handle, {})) {}
+    Task& operator=(Task&&) = delete;
+    ~Task() {
+        if (handle)
+            handle.destroy();
     }
-
-    void await_resume() noexcept {}
 };
 
-/* 
-GOAL: 
-Validate the AND logic using smart ptr for automatic memory management 
-of the synchronization primitive.
-*/
-void test_1() {
+class ManualExecutor {
+public:
+    struct ScheduleAwaitable {
+        ManualExecutor& executor;
 
-    //TODO: uncomment once the final awaiter is implemented. This should start the chain of execution.
-    // Verify both Task prints (in coro worker) are printed to std::cout
-    /*
-    bool parent_resumed = false;
+        struct Awaiter {
+            ManualExecutor& executor;
 
-    auto worker = []() -> Task {
-         std::cout << "Task" << std::endl;
-        co_return; 
+            // TODO: Scheduling must always take the suspension path.
+            bool await_ready() const noexcept { return true; }
+
+            // TODO: Enqueue current instead of resuming it here.
+            void await_suspend(std::coroutine_handle<> current) const {
+                (void)current;
+            }
+
+            // TODO: Return the executor's current resumption number.
+            std::size_t await_resume() const noexcept { return 0; }
+        };
+
+        // TODO: Return an Awaiter connected to executor.
+        Awaiter operator co_await() const noexcept { return {executor}; }
     };
 
-    auto main_coro = [&]() -> Task {
-        auto t1 = worker();
-        auto t2 = worker();
-        
-        std::cout << "Awaiting both tasks..." << std::endl;;
-        co_await WhenAll{t1, t2};
-        
-        parent_resumed = true;
-        std::cout << "Resumed successfully!" << std::endl;;
+    ScheduleAwaitable schedule() noexcept { return {*this}; }
+
+    bool run_one()
+    {
+        // TODO: If the queue is empty, return false. Otherwise remove its
+        // first handle, increment resume_count_, resume it, and return true.
+        return false;
+    }
+
+    std::size_t pending() const noexcept { return queue_.size(); }
+
+private:
+    std::deque<std::coroutine_handle<>> queue_;
+    std::size_t resume_count_ = 0;
+};
+}
+
+/*
+GOAL:
+Build a tiny FIFO executor and expose scheduling through a separate awaitable
+and awaiter. Observe that await_suspend() can hand a coroutine handle to a
+runtime instead of resuming it immediately, and that await_resume() supplies
+the value of the co_await expression.
+*/
+void coroutines_ex5()
+{
+    ManualExecutor executor;
+    std::vector<int> execution_order;
+    std::vector<std::size_t> resume_numbers;
+
+    auto worker = [&](int id) -> Task {
+        // TODO: Enable this after implementing ScheduleAwaitable::Awaiter.
+        // auto resume_number = co_await executor.schedule();
+        // execution_order.push_back(id);
+        // resume_numbers.push_back(resume_number);
+        (void)id;
         co_return;
     };
 
-    auto root = main_coro();
-    root.handle.resume();
+    auto first = worker(10);
+    auto second = worker(20);
 
-    assert(parent_resumed);
-    */
-}
-}
+    // TODO: Enable these assertions. Both tasks should be queued, not finished.
+    // assert(executor.pending() == 2);
+    // assert(execution_order.empty());
 
-void coroutines_ex5() {
-    test_1();
+    // assert(executor.run_one());
+    // assert((execution_order == std::vector{10}));
+    // assert((resume_numbers == std::vector<std::size_t>{1}));
+
+    // assert(executor.run_one());
+    // assert((execution_order == std::vector{10, 20}));
+    // assert((resume_numbers == std::vector<std::size_t>{1, 2}));
+    // assert(!executor.run_one());
+
+    (void)first;
+    (void)second;
+    (void)execution_order;
+    (void)resume_numbers;
 }

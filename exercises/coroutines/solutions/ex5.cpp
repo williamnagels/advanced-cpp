@@ -1,49 +1,27 @@
 #include <cassert>
 #include <coroutine>
-#include <iostream>
-#include <memory>
+#include <cstddef>
+#include <deque>
+#include <exception>
 #include <utility>
+#include <vector>
 
 namespace
 {
-struct AndLatch {
-    std::size_t counter;
-    std::coroutine_handle<> parent;
-
-    AndLatch(std::size_t count, std::coroutine_handle<> continuation)
-        : counter(count), parent(continuation) {}
-
-    ~AndLatch() { std::cout << "  [Debug] Latch destroyed\n"; }
-};
-
 struct Task {
+    struct promise_type;
+    using handle_type = std::coroutine_handle<promise_type>;
+
     struct promise_type {
-        std::shared_ptr<AndLatch> latch;
-
         Task get_return_object() noexcept {
-            return Task{
-                std::coroutine_handle<promise_type>::from_promise(*this)};
+            return Task{handle_type::from_promise(*this)};
         }
-        std::suspend_always initial_suspend() const noexcept { return {}; }
-
-        struct FinalAwaiter {
-            bool await_ready() const noexcept { return false; }
-            std::coroutine_handle<> await_suspend(
-                std::coroutine_handle<promise_type> handle) const noexcept {
-                auto latch = handle.promise().latch;
-                if (latch && --latch->counter == 0)
-                    return latch->parent;
-                return std::noop_coroutine();
-            }
-            void await_resume() const noexcept {}
-        };
-
-        FinalAwaiter final_suspend() const noexcept { return {}; }
+        std::suspend_never initial_suspend() const noexcept { return {}; }
+        std::suspend_always final_suspend() const noexcept { return {}; }
         void return_void() const noexcept {}
         void unhandled_exception() { std::terminate(); }
     };
 
-    using handle_type = std::coroutine_handle<promise_type>;
     handle_type handle{};
 
     explicit Task(handle_type coroutine) noexcept : handle(coroutine) {}
@@ -59,54 +37,73 @@ struct Task {
     }
 };
 
-struct WhenAll {
-    Task& first;
-    Task& second;
+class ManualExecutor {
+public:
+    struct ScheduleAwaitable {
+        ManualExecutor& executor;
 
-    bool await_ready() const noexcept { return false; }
+        struct Awaiter {
+            ManualExecutor& executor;
 
-    void await_suspend(std::coroutine_handle<> parent) const {
-        auto latch = std::make_shared<AndLatch>(2, parent);
-        first.handle.promise().latch = latch;
-        second.handle.promise().latch = std::move(latch);
-        first.handle.resume();
-        second.handle.resume();
+            bool await_ready() const noexcept { return false; }
+            void await_suspend(std::coroutine_handle<> current) const {
+                executor.queue_.push_back(current);
+            }
+            std::size_t await_resume() const noexcept {
+                return executor.resume_count_;
+            }
+        };
+
+        Awaiter operator co_await() const noexcept { return {executor}; }
+    };
+
+    ScheduleAwaitable schedule() noexcept { return {*this}; }
+
+    bool run_one()
+    {
+        if (queue_.empty())
+            return false;
+
+        auto next = queue_.front();
+        queue_.pop_front();
+        ++resume_count_;
+        next.resume();
+        return true;
     }
 
-    void await_resume() const noexcept {}
+    std::size_t pending() const noexcept { return queue_.size(); }
+
+private:
+    std::deque<std::coroutine_handle<>> queue_;
+    std::size_t resume_count_ = 0;
 };
 
-void test_1()
-{
-    bool parent_resumed = false;
-    int completed_workers = 0;
-
-    auto worker = [&]() -> Task {
-        ++completed_workers;
-        std::cout << "Task\n";
-        co_return;
-    };
-
-    auto parent = [&]() -> Task {
-        auto first = worker();
-        auto second = worker();
-
-        std::cout << "Awaiting both tasks...\n";
-        co_await WhenAll{first, second};
-
-        parent_resumed = true;
-        std::cout << "Resumed successfully!\n";
-    };
-
-    auto root = parent();
-    root.handle.resume();
-
-    assert(completed_workers == 2);
-    assert(parent_resumed);
-}
 }
 
 void coroutines_ex5()
 {
-    test_1();
+    ManualExecutor executor;
+    std::vector<int> execution_order;
+    std::vector<std::size_t> resume_numbers;
+
+    auto worker = [&](int id) -> Task {
+        auto resume_number = co_await executor.schedule();
+        execution_order.push_back(id);
+        resume_numbers.push_back(resume_number);
+    };
+
+    auto first = worker(10);
+    auto second = worker(20);
+
+    assert(executor.pending() == 2);
+    assert(execution_order.empty());
+
+    assert(executor.run_one());
+    assert((execution_order == std::vector{10}));
+    assert((resume_numbers == std::vector<std::size_t>{1}));
+
+    assert(executor.run_one());
+    assert((execution_order == std::vector{10, 20}));
+    assert((resume_numbers == std::vector<std::size_t>{1, 2}));
+    assert(!executor.run_one());
 }

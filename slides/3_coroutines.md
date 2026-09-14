@@ -1352,20 +1352,6 @@ code outside the coroutine can resume it later.
 
 ---
 ## Exercise: coroutines/ex4.cpp
-Turn `Switchboard` into an awaitable that returns a value to the awaiting
-coroutine.
-
-- Implement `await_ready()` so the coroutine takes the suspension path.
-- Implement `await_suspend()` and resume the supplied handle.
-- Implement `await_resume()` to return twice the stored input value.
-- Enable `int doubled = co_await Switchboard{start}`.
-- Verify that an input of `10` produces `20` after resumption.
-
-The goal is to understand that `co_await` is an expression: its value comes
-from `await_resume()`, not from `await_suspend()`.
-
----
-## Exercise: coroutines/ex5.cpp
 Implement `WhenAll` so a parent coroutine resumes only after both child tasks
 have completed.
 
@@ -1610,6 +1596,21 @@ struct promise_type {
 [23:02:36] [thread 126461306463808] Task 1 done
 [23:02:36] [thread 126461318256512] All tasks finished
 ```
+
+---
+## Exercise: coroutines/ex5.cpp
+Build a tiny FIFO executor whose `schedule()` operation is awaitable.
+
+- Keep `ScheduleAwaitable` separate from its `Awaiter` and connect them with
+    `operator co_await()`.
+- Make `await_ready()` select the suspension path.
+- In `await_suspend()`, enqueue the current coroutine instead of resuming it.
+- Implement `run_one()` to resume one queued coroutine at a time.
+- Return the resumption number from `await_resume()`.
+- Verify that two workers remain paused, then resume in FIFO order.
+
+The goal is to see how an awaiter hands suspended work to a runtime, while
+`await_resume()` still provides the value of the `co_await` expression.
 
 ---
 ## Exercise: coroutines/ex6.cpp
