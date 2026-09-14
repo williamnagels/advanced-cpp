@@ -22,11 +22,11 @@ theme: slide-theme
     - Disk I/O
     - Timers
 - CPU mostly idle while waiting
-- avoid blocking threads
+- Avoid blocking worker threads
 ---
 ## Traditional Async APIs
 - State is split across lambdas / function objects
-- User manages lifetime manually
+- Manual lifetime management
 - Error-prone and hard to follow
 ---
 ## Callback hell
@@ -169,8 +169,42 @@ responsibilities.
 https://vishalchovatiya.com/posts/cpp20-coroutine-under-the-hood/
 
 ---
+## A simple coroutine: suspend and resume
+```cpp
+Gen demo() {
+    std::cout << "[coroutine] start\n";
+    co_yield 10;
+    std::cout << "[coroutine] after first yield\n";
+    co_yield 20;
+    std::cout << "[coroutine] after second yield\n";
+}
+
+int main() {
+    auto g = demo();
+    std::cout << "[main] first next\n";
+    g.next();
+    std::cout << "[main] value = " << g.value() << "\n";
+    std::cout << "[main] second next\n";
+    g.next();
+    std::cout << "[main] value = " << g.value() << "\n";
+}
+```
+---
+```text
+[main] first next
+[coroutine] start
+[main] value = 10
+[main] second next
+[coroutine] after first yield
+[main] value = 20
+```
+
+This is the key pattern: the coroutine runs, suspends at a `co_yield`, returns
+control to `main`, and later resumes at the saved point.
+
+---
 ## Where Is the coroutine state stored?
-- Compiler rewrites the function
+- Compiler rewrites the function into a resumable state machine
 - Creates an opaque coroutine frame
 - Parameters and locals that survive suspension become frame fields
 - References remain references: the referenced object must still outlive their use
@@ -192,7 +226,7 @@ coroutine frame contains: state + saved locals + promise
 - the handle lets the return object resume, inspect, or destroy the frame
 ---
 ## The promise: a shared interface
-Lets see how the caller interacts with the statemchine
+Lets see how the caller interacts with the statemachine
 ```text
 body -- co_yield --> promise.yield_value(...)
 body -- co_return --> promise.return_value(...) / return_void()
@@ -377,9 +411,20 @@ the frame that provides the compiler's customization interface.
 
 ---
 ## Generator lifecycle: putting it together
+This is the same pattern as the earlier `count_to_three()` example.
+
+```cpp
+Generator<int> count_to_three() {
+    co_yield 1;
+    co_yield 2;
+    co_yield 3;
+    co_return;
+}
+```
+---
 ```text
-count_to_three() - early generator example - called
-  --> frame and promise are created
+count_to_three() - called
+  --> frame and promise(Generator<int>::promise_type) are created
   --> Generator is returned holding the frame handle
   --> initial_suspend: body has not run yet
 
@@ -394,7 +439,7 @@ co_return
 ```
 
 ---
-## promise_type customization points
+## promise_type implementation
 The coroutine body determines which hooks are required:
 | Concern | Promise customization point |
 | --- | --- |
@@ -452,8 +497,7 @@ Not required for coroutines that never use co_yield.
 
 **Why customize?**
 - how values are stored (reference vs copy, lifetime)
-- buffering
-- ownership/lifetime
+    - ownership/lifetime
 
 ---
 ## return_void() / return_value(T)
@@ -536,14 +580,6 @@ or particular frame layout. Optimizers may inline or rewrite all of this.
 
 ---
 
-## resume() mental model
-Resuming enters a state machine; suspending returns or transfers control.
-- `resume()` runs synchronously until the next suspension or completion
-- The coroutine executes on the resuming thread
-- Frame state identifies where the next resume continues
-- No scheduling or thread switch happens unless a library arranges it
----
-
 ## co_yield, co_await, co_return mental model
 On suspension of the coroutine:
 - Save enough state to identify the next continuation point
@@ -622,6 +658,8 @@ int main()
 std::generator<int> tree_values(Node const& node) {
     co_yield node.value;
     for (Node const& child : node.children)
+        //building a new generator tree_value(child)
+        //yielding 1 element every pull - by ranges::elements_of
         co_yield std::ranges::elements_of{tree_values(child)};
 }
 ```
@@ -755,180 +793,98 @@ int main() {
 ```
 
 ---
-## 1. Allocate the coroutine frame
+## Lifecycle 1/5: create a lazy coroutine
 ```text
-[Thread 140313004930880] [operator new] Allocating coroutine frame of size 32 bytes
+[operator new] Allocating coroutine frame of size 32 bytes
+promise_type constructed
+get_return_object()
+Generator constructed
+initial_suspend()
 ```
-Storage is acquired before any object inside the frame can be constructed.
-**Logical IP:** generated coroutine prologue, before the function body.
+
+1. Allocate the frame, then construct its promise.
+2. Create a `Generator` that owns a handle to that frame.
+3. Stop at `initial_suspend` before entering `myGenerator()`.
+
+**Interesting:** calling a lazy coroutine executes compiler-generated setup,
+but none of the function body.
 
 ---
-## 2. Construct the promise
+## Lifecycle 2/5: pull the first value
 ```text
-[Thread 140313004930880] promise_type constructed
+next(): calling resume()
+    Entering coroutine
+    yield_value(10)
+next(): resume() returned
+Got value: 10
 ```
-The promise is constructed inside the newly allocated frame and will hold the yielded value.
-**Logical IP:** generated coroutine prologue, before the function body.
+
+`resume()` runs the body on the caller's thread until `co_yield 10`.
+`yield_value()` stores `10`; its `suspend_always` returns control to `next()`.
+The caller then reads the promise while the frame is suspended.
+
+```text
+caller running -> coroutine running -> caller running
+initial_suspend    first co_yield       reads 10
+```
 
 ---
-## 3. Create the return object
+## Lifecycle 3/5: the pull cycle repeats
 ```text
-[Thread 140313004930880] get_return_object()
+next(): calling resume()
+    yield_value(20)
+next(): resume() returned
+Got value: 20
 ```
-The compiler asks the promise for the object that will expose and own the frame handle.
-**Logical IP:** generated coroutine prologue, before the function body.
+
+The saved continuation is immediately after the first `co_yield`.
+Execution continues to the next yield and suspends again.
+
+**The generator protocol is a pull loop:**
+```text
+resume -> run -> publish value -> suspend -> read value
+     ^                                               |
+     +-----------------------------------------------+
+```
+Each call to `next()` advances at most to the next suspension point.
 
 ---
-## 4. Construct Generator
+## Lifecycle 4/5: complete, but stay alive
 ```text
-[Thread 140313004930880] Generator constructed
+next(): calling resume()
+    return_void()
+    final_suspend()
+next(): resume() returned
+Done
 ```
-`get_return_object()` constructs the `Generator` from a handle to this frame.
-**Logical IP:** generated coroutine prologue, before the function body.
+
+The third resume continues after the second `co_yield` and reaches `co_return`.
+`return_void()` records completion; `final_suspend()` suspends one last time.
+Now `coro.done()` is true, so `next()` returns `false`.
+
+**Interesting:** completion ends execution, not lifetime. The frame remains
+available for result inspection and must not be resumed again.
 
 ---
-## 5. Reach initial suspension
+## Lifecycle 5/5: destroy the frame
 ```text
-[Thread 140313004930880] initial_suspend()
+Generator destroyed
+promise_type destroyed
+[operator delete] Freeing coroutine frame of size 32 bytes
 ```
-`suspend_always` makes this generator lazy, so the call returns without running its body.
-**Logical IP:** initial suspension point, immediately before the function body.
 
----
-## 6. Request the first value
-```text
-[Thread 140313004930880] next(): calling resume()
-```
-The consumer resumes the suspended frame to begin producing a value.
-**Logical IP:** initial suspension point, immediately before the function body.
+When `gen` leaves scope, its destructor calls `coro.destroy()`:
 
----
-## 7. Enter the coroutine body
-```text
-[Thread 140313004930880] Entering coroutine
-```
-`resume()` has transferred control into `myGenerator()` on the calling thread.
-**Logical IP:** the first statement in the coroutine body.
+1. Destroy live objects in the frame, including the promise.
+2. Release the frame's storage through `promise_type::operator delete`.
 
----
-## 8. Publish the first value
 ```text
-[Thread 140313004930880] yield_value(10)
+call       pull values       complete          leave scope
+    |             |                |                  |
+create -> initial_suspend -> final_suspend -> destroy frame
 ```
-`co_yield 10` stores `10` in the promise and returns `suspend_always`.
-**Logical IP:** the first `co_yield`; the continuation is the following statement.
 
----
-## 9. Suspend after the first yield
-```text
-[Thread 140313004930880] next(): resume() returned
-```
-The yield awaiter suspended the coroutine, so control returned to `next()`.
-**Logical IP:** suspended at the first `co_yield`.
-
----
-## 10. Read the first value
-```text
-[Thread 140313004930880] Got value: 10
-```
-The caller reads `current_value` from the promise while the coroutine remains suspended.
-**Logical IP:** suspended at the first `co_yield`.
-
----
-## 11. Continue after the first yield
-```text
-[Thread 140313004930880] next(): calling resume()
-```
-The next iteration resumes execution after the first `co_yield`.
-**Logical IP:** continuation immediately after the first `co_yield`.
-
----
-## 12. Publish the second value
-```text
-[Thread 140313004930880] yield_value(20)
-```
-Execution reaches `co_yield 20`, stores `20`, and prepares to suspend again.
-**Logical IP:** the second `co_yield`; the continuation is `co_return`.
-
----
-## 13. Suspend after the second yield
-```text
-[Thread 140313004930880] next(): resume() returned
-```
-Control returns to `next()` after the second yield awaiter suspends the frame.
-**Logical IP:** suspended at the second `co_yield`.
-
----
-## 14. Read the second value
-```text
-[Thread 140313004930880] Got value: 20
-```
-The caller reads the newly stored value while the coroutine remains suspended.
-**Logical IP:** suspended at the second `co_yield`.
-
----
-## 15. Continue toward completion
-```text
-[Thread 140313004930880] next(): calling resume()
-```
-The consumer resumes after the second yield, so execution advances to `co_return`.
-**Logical IP:** continuation immediately after the second `co_yield`.
-
----
-## 16. Complete the coroutine body
-```text
-[Thread 140313004930880] return_void()
-```
-The expressionless `co_return` notifies the promise that no final value is produced.
-**Logical IP:** `co_return`, before the generated final-suspension path.
-
----
-## 17. Reach final suspension
-```text
-[Thread 140313004930880] final_suspend()
-```
-`suspend_always` keeps the completed frame alive until its owner destroys it.
-**Logical IP:** final suspension point; the coroutine body is complete.
-
----
-## 18. Return from the final resume
-```text
-[Thread 140313004930880] next(): resume() returned
-```
-Control returns to `next()`, where `done()` now reports completion.
-**Logical IP:** suspended at `final_suspend`; it must not be resumed again.
-
----
-## 19. Finish consuming values
-```text
-[Thread 140313004930880] Done
-```
-`next()` returned `false`, so the loop ended and `main()` continued.
-**Logical IP:** still suspended at `final_suspend` while the caller runs.
-
----
-## 20. Destroy the return object
-```text
-[Thread 140313004930880] Generator destroyed
-```
-The owning `Generator` leaves scope and calls `coro.destroy()`.
-**Logical IP:** final suspension point; frame teardown begins.
-
----
-## 21. Destroy the promise
-```text
-[Thread 140313004930880] promise_type destroyed
-```
-Destroying the coroutine frame destroys the promise and other live frame objects.
-**Logical IP:** no resumable position remains; the frame is being destroyed.
-
----
-## 22. Release frame storage
-```text
-[Thread 140313004930880] [operator delete] Freeing coroutine frame of size 32 bytes
-```
-After frame objects are destroyed, the allocation function releases the storage.
-**Logical IP:** none; the coroutine and its frame no longer exist.
+`final_suspend` and `destroy()` are separate lifecycle events.
 
 ---
 ## lazy ranges vs coroutine
