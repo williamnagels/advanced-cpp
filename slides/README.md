@@ -37,15 +37,22 @@ on the Markdown filename, so this command creates `slides/pdf/2_ranges.pdf`.
 
 ## Download generated PDFs
 
-The GitHub Actions workflow publishes these decks as the
-`advanced-cpp-slides` artifact:
+The latest slide decks are publicly available from GitHub Pages:
+
+**[View and download the Advanced C++ slides](https://williamnagels.github.io/advanced-cpp/)**
+
+The page is updated automatically after a successful build on the `main`
+branch and provides these PDFs:
 
 - `1_intro.pdf`
 - `2_ranges.pdf`
 - `3_coroutines.pdf`
 
-Open the repository on GitHub, select **Actions**, open a completed
-**Docker build** workflow run, and download **advanced-cpp-slides** from the
-**Artifacts** section. GitHub downloads a ZIP containing the three PDFs.
+The GitHub Actions workflow also publishes the same files as the
+`advanced-cpp-slides` artifact. To download that ZIP, open the repository on
+GitHub, select **Actions**, open a completed **Docker build** run, and find it
+under **Artifacts**. GitHub requires you to sign in to download workflow
+artifacts.
 
-Artifacts are retained for 30 days after each workflow run.
+The Pages links are stable and public. Workflow artifacts are retained for 30
+days after each run.
