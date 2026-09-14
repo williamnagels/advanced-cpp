@@ -1627,4 +1627,19 @@ The goal is to show that a suspended coroutine chain is not represented by the
 native call stack; meaningful async diagnostics require explicit frame metadata.
 
 ---
+## Exercise: coroutines/ex7.cpp
+Turn the FIFO executor from exercise 5 into a two-thread executor.
+
+- Protect the coroutine queue and executor state with a mutex.
+- Use a condition variable to wake workers when work arrives.
+- Resume coroutine handles only after releasing the queue lock.
+- Track queued and active work so `wait_idle()` is race-free.
+- Shut down by draining queued work and joining both workers.
+- Use a latch to prove that two coroutines execute concurrently on different
+    worker threads.
+
+The goal is to separate coroutine scheduling from thread synchronization:
+a coroutine handle is transferable work, but it provides no thread safety.
+
+---
 <!-- _class: final-slide -->
